@@ -1,6 +1,6 @@
 # Simple RAG: Implementation Plan
 
-> Status: **In progress.** Phases 0–7 are complete.
+> Status: **In progress.** Phases 0–8 are complete. See [EVALUATION.md](EVALUATION.md) for results.
 > Last updated: 2026-10-07
 
 ---
@@ -404,7 +404,7 @@ Uploaded raw files are stored on local disk (`STORAGE_DIR`) behind a `FileStorag
 
 - **Dataset:** `evals/datasets/*.jsonl`, one line per question:
   `{"question": "...", "expected_chunk_ids|expected_doc_titles": [...], "reference_answer": "..."}`
-  We bootstrap it by having the LLM draft questions from sample chunks, then **review them by hand**.
+  The first dataset (27 questions) was written by hand against the sample corpus.
 - **Retrieval metrics:** recall@5/@10, MRR, nDCG@10, latency p50/p95.
 - **Answer metrics:**
   - **faithfulness:** an LLM judge checks that every claim is supported by the cited chunks
@@ -540,9 +540,9 @@ Each phase ends with passing tests and **one or more focused git commits**.
 - [x] SSE streaming of steps and tokens; e2e test with a scripted fake `ChatModel`
 
 ### Phase 8: Evaluation harness
-- [ ] Dataset format + LLM-assisted question generation + manual review
-- [ ] Retrieval and answer metrics, `rag-eval` CLI, Markdown/JSON reports
-- [ ] Results table in the README: vector vs hybrid vs hybrid + rerank vs agent
+- [x] Dataset format + LLM-assisted question generation + manual review
+- [x] Retrieval and answer metrics, `rag-eval` CLI, Markdown/JSON reports
+- [x] Results table in the README: vector vs hybrid vs hybrid + rerank vs agent
 
 ### Phase 9: Polish and stretch goals
 - [ ] `CrossEncoderReranker` (optional dependency group `[rerank-local]`) + eval comparison

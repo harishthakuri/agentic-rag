@@ -127,6 +127,22 @@ The model decides **what to search for, how often, and when to stop**. It can sp
 
 Errors use [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`).
 
+## Evaluation
+
+A labelled question set measures retrieval (recall, MRR, nDCG) and answer quality (correctness, faithfulness and citations, graded by an LLM judge). [Method, results and their interpretation](docs/EVALUATION.md).
+
+| System | Correctness | Faithfulness | Answers with citations | Declined unanswerable | p50 latency |
+|---|---|---|---|---|---|
+| `/ask` (hybrid + LLM rerank) | 1.00 | 0.97 | 79% | 3/3 | 7.6 s |
+| `/agent/ask` | 1.00 | 0.95 | 88% | 3/3 | 6.3 s |
+
+The main findings: the sample corpus is too easy to separate the retrieval strategies, and the remaining weakness is citation discipline, not retrieval. Building the evaluation also caught three bugs, two of them in production code.
+
+```bash
+make eval-retrieval    # ~3 min
+make eval              # ~30 min locally (about 250 LLM calls)
+```
+
 ## Development
 
 ```bash
