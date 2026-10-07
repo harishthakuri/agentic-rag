@@ -1,5 +1,7 @@
 # Install once:  uv run pre-commit install
 # Hooks run through `uv run` so they use the exact versions pinned in uv.lock.
+# Vendored third-party files must stay byte-for-byte identical to the release.
+exclude: ^app/presentation/web/static/vendor/
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

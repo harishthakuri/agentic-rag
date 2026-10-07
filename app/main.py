@@ -17,6 +17,7 @@ from app.presentation.api import health
 from app.presentation.api.errors import register_error_handlers
 from app.presentation.api.middleware import request_context_middleware
 from app.presentation.api.v1.router import api_v1_router
+from app.presentation.web import mount_ui
 
 logger = structlog.get_logger(__name__)
 
@@ -55,4 +56,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(api_v1_router)
+    mount_ui(app)
     return app

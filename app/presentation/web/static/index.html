@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Simple RAG</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="vendor/marked-18.1.0.umd.js" defer></script>
+    <script src="vendor/purify-3.4.16.min.js" defer></script>
+    <script src="app.js" type="module"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">◆</span>
+        <span>Simple RAG</span>
+      </div>
+      <div id="health" class="pill pill-muted" title="Readiness of the database and models">checking…</div>
+      <a class="toplink" href="/docs" target="_blank" rel="noopener">API docs ↗</a>
+    </header>
+
+    <div class="layout">
+      <!-- Sidebar: key, collection, documents -->
+      <aside class="sidebar">
+        <section class="card">
+          <h2>API key</h2>
+          <form id="key-form" class="row">
+            <input id="key-input" type="password" placeholder="srag_…" autocomplete="off" aria-label="API key" />
+            <button type="submit">Save</button>
+          </form>
+          <p id="key-status" class="hint">Create one with <code>make api-key name=dev</code>.</p>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Collection</h2>
+            <button id="new-collection-toggle" class="ghost small" type="button">+ New</button>
+          </div>
+          <select id="collection-select" aria-label="Collection"></select>
+          <p id="collection-info" class="hint"></p>
+          <form id="new-collection-form" class="stack" hidden>
+            <input id="new-collection-name" placeholder="name, e.g. homelab-notes" required />
+            <input id="new-collection-description" placeholder="description (optional)" />
+            <button type="submit">Create collection</button>
+          </form>
+        </section>
+
+        <section class="card grow">
+          <div class="card-head">
+            <h2>Documents</h2>
+            <label class="button ghost small" for="file-input">+ Upload</label>
+            <input id="file-input" type="file" accept=".md,.markdown,.txt,.pdf" multiple hidden />
+          </div>
+          <p class="hint">Markdown, text or PDF. The worker (<code>make worker</code>) makes them searchable.</p>
+          <ul id="document-list" class="documents"></ul>
+        </section>
+      </aside>
+
+      <!-- Main: chat and search lab -->
+      <main class="main">
+        <nav class="tabs" role="tablist">
+          <button class="tab active" data-tab="chat" role="tab" aria-selected="true">Chat</button>
+          <button class="tab" data-tab="search" role="tab" aria-selected="false">Search lab</button>
+        </nav>
+
+        <section id="tab-chat" class="tab-panel">
+          <div id="messages" class="messages">
+            <div class="empty">
+              <h3>Ask your documents</h3>
+              <p><strong>Ask</strong> searches once with your question (hybrid search + rerank), then answers from the sources it found.</p>
+              <p><strong>Agent</strong> lets the model decide what to search for, and how many times, before answering.</p>
+              <p>Every claim cites its source as <span class="cite static">1</span>. Click a citation to read the source.</p>
+            </div>
+          </div>
+          <form id="chat-form" class="composer">
+            <div class="segmented" role="radiogroup" aria-label="Mode">
+              <button type="button" class="seg active" data-mode="ask" role="radio" aria-checked="true">Ask</button>
+              <button type="button" class="seg" data-mode="agent" role="radio" aria-checked="false">Agent</button>
+            </div>
+            <textarea id="chat-input" rows="2" placeholder="Ask a question… (Enter to send, Shift+Enter for a new line)" required></textarea>
+            <button id="chat-send" type="submit">Send</button>
+          </form>
+        </section>
+
+        <section id="tab-search" class="tab-panel" hidden>
+          <form id="search-form" class="row search-bar">
+            <input id="search-input" placeholder="Compare retrieval strategies on one query…" required />
+            <button type="submit">Search</button>
+          </form>
+          <p class="hint">
+            The same query through four retrievers, with no LLM answer. Hover a result to see where the same passage ranks elsewhere.
+          </p>
+          <div id="search-results" class="lab"></div>
+        </section>
+      </main>
+
+      <!-- Source drawer -->
+      <aside id="drawer" class="drawer" hidden aria-label="Source">
+        <div class="drawer-head">
+          <h2 id="drawer-title">Source</h2>
+          <button id="drawer-close" class="ghost small" type="button" aria-label="Close">✕</button>
+        </div>
+        <p id="drawer-location" class="location"></p>
+        <div id="drawer-body" class="markdown"></div>
+      </aside>
+    </div>
+
+    <div id="toast" class="toast" hidden role="status"></div>
+  </body>
+</html>

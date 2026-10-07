@@ -56,6 +56,16 @@ make migrate
 make run                    # http://localhost:8000/docs
 ```
 
+## Web UI
+
+Open **http://localhost:8000** (it redirects to `/ui/`) and paste an API key in the sidebar. The UI is a single static page that uses the same public API as any other client:
+
+- **Collections and documents:** create collections, upload Markdown, text or PDF files, and watch ingestion progress live.
+- **Chat:** streamed answers in **Ask** mode (one search) or **Agent** mode (the model plans its own searches, shown step by step). Citations `[n]` are clickable and open the exact source passage.
+- **Search lab:** one query through vector, keyword, hybrid and hybrid + rerank, side by side. Hover a result to see where the same passage ranks in the other columns.
+
+There is no build step: plain HTML, CSS and JavaScript, with two vendored libraries (Markdown rendering and HTML sanitising). It is served under a strict Content-Security-Policy, and model output is always sanitised before it is displayed.
+
 ## Using the API
 
 Every `/api/v1` route requires an API key. Only its hash is stored, so the key is shown once:

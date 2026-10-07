@@ -23,7 +23,7 @@ A **knowledge-base API**. You upload Markdown and PDF documents into named **col
 
 ### Non-goals for v1
 
-- A web UI. We use Swagger at `/docs` plus `curl`/HTTPie. A UI can come later.
+- ~~A web UI.~~ Added after phase 8: a static single-page UI at `/ui` (chat with streaming and citations, agent steps, a search lab, document management).
 - Multi-tenant user management. A single owner with API keys is enough.
 - Fine-tuning models.
 - GraphRAG and knowledge graphs (listed under Future Work).
