@@ -15,6 +15,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.application.ports.chat import ChatModelError
+from app.application.ports.embeddings import EmbeddingUnavailableError
 from app.domain.exceptions import (
     AuthenticationError,
     ConflictError,
@@ -91,6 +93,17 @@ async def _http_exception(request: Request, exc: Exception) -> JSONResponse:
     return problem_response(request, HTTPStatus(error.status_code), error.detail, error.headers)
 
 
+async def _dependency_unavailable(request: Request, exc: Exception) -> JSONResponse:
+    # The model server is down or overloaded: tell clients to retry, don't blame them.
+    logger.warning("dependency.unavailable", error=str(exc))
+    return problem_response(
+        request,
+        HTTPStatus.SERVICE_UNAVAILABLE,
+        "A model service is unavailable. Please retry shortly.",
+        {"Retry-After": "10"},
+    )
+
+
 async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
     # Details stay in the logs; clients get a generic message.
     logger.error("request.unhandled_error", error_type=type(exc).__name__)
@@ -101,4 +114,6 @@ def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(DomainError, _domain_error)
     app.add_exception_handler(RequestValidationError, _request_validation_error)
     app.add_exception_handler(StarletteHTTPException, _http_exception)
+    app.add_exception_handler(ChatModelError, _dependency_unavailable)
+    app.add_exception_handler(EmbeddingUnavailableError, _dependency_unavailable)
     app.add_exception_handler(Exception, _unhandled)

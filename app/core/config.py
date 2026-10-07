@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     llm_api_key: SecretStr = SecretStr("ollama")
     llm_model: str = "gpt-oss:20b"
     llm_timeout_seconds: float = 120.0
+    # Reasoning models only ("low" | "medium" | "high"); empty for models without it.
+    llm_reasoning_effort: str | None = "low"
 
     # --- Embeddings (configured separately from the chat model) ------------
     embedding_base_url: str = "http://localhost:11434/v1"
@@ -85,6 +87,10 @@ class Settings(BaseSettings):
     rerank_depth: int = Field(default=10, ge=1, le=100)
     reranker_batch_size: int = Field(default=10, ge=1)
     reranker_max_concurrency: int = Field(default=2, ge=1)
+
+    # --- Answering (/ask) --------------------------------------------------
+    answer_context_tokens: int = Field(default=3000, ge=200)  # budget for sources in the prompt
+    answer_min_rerank_grade: int = Field(default=1, ge=0, le=3)  # drop reranked chunks below
 
     # --- Storage -----------------------------------------------------------
     storage_dir: Path = Path("./data/uploads")

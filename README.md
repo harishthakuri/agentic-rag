@@ -105,6 +105,16 @@ With `RERANKER=llm` (the default), the top candidates are then **reranked** by t
 uv run python scripts/compare_search.py "your question"
 ```
 
+### Ask (RAG)
+
+```bash
+curl -N -X POST localhost:8000/api/v1/collections/<collection-id>/ask \
+  -H "Authorization: Bearer $RAG_KEY" -H "Content-Type: application/json" \
+  -d '{"question": "Why does my filtered vector search return fewer rows than the LIMIT?", "stream": true}'
+```
+
+Search (hybrid + rerank) runs once with the question. The chat model then answers **only from the retrieved sources**, citing them as `[n]`. With `"stream": true` you get Server-Sent Events (`sources`, then `token`…, then `done`). Without it, you get a single JSON answer. Every response lists the sources and which ones were cited. If nothing relevant is found, the model is not called at all.
+
 Errors use [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`).
 
 ## Development

@@ -24,7 +24,7 @@ import re
 
 from app.application.ports.chunking import ChunkDraft
 from app.application.ports.parsing import ParsedDocument, Section
-from app.infrastructure.chunking.tokens import TokenCounter
+from app.application.ports.tokens import TokenCounter
 
 _BLANK_LINES = re.compile(r"\n[ \t]*\n")
 _FENCE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})", re.MULTILINE)

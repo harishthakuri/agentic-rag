@@ -11,9 +11,17 @@ import httpx2 as httpx  # the OpenAI SDK is built on httpx2
 import pytest
 from openai import AsyncOpenAI
 
+from app.application.ports.chat import (
+    ChatMessage,
+    ChatModelError,
+    CompletionDone,
+    TextDelta,
+    TokenUsage,
+)
 from app.application.ports.embeddings import EmbeddingUnavailableError
 from app.application.ports.reranking import RerankCandidate, RerankError
 from app.domain.value_objects import EmbeddingSpec, new_id
+from app.infrastructure.llm.openai_chat import OpenAICompatibleChatModel
 from app.infrastructure.llm.openai_embedder import OpenAICompatibleEmbedder
 from app.infrastructure.reranking import LLMReranker
 from app.infrastructure.storage.local import LocalFileStorage
@@ -196,3 +204,58 @@ async def test_llm_reranker_failures_raise_rerank_error(
     reranker = _reranker(_chat_api([], reply))
     with pytest.raises(RerankError):
         await reranker.rerank("q", _candidates("a", "b"))
+
+
+# --- Chat model (against a mocked streaming chat-completions API) -------------
+def _sse_chunks(*deltas: dict[str, Any], usage: dict[str, int] | None = None) -> bytes:
+    def chunk(choices: list[dict[str, Any]], **extra: Any) -> str:
+        body = {"id": "x", "object": "chat.completion.chunk", "created": 0, "model": "m"}
+        return "data: " + json.dumps({**body, "choices": choices, **extra}) + "\n\n"
+
+    events = [chunk([{"index": 0, "delta": d, "finish_reason": None}]) for d in deltas]
+    if usage:
+        events.append(chunk([], usage={**usage, "total_tokens": sum(usage.values())}))
+    events.append("data: [DONE]\n\n")
+    return "".join(events).encode()
+
+
+def _chat_model(transport: httpx.MockTransport, **kwargs: Any) -> OpenAICompatibleChatModel:
+    client = AsyncOpenAI(
+        base_url="http://ollama.test/v1",
+        api_key="test",
+        max_retries=0,
+        http_client=httpx.AsyncClient(transport=transport),
+    )
+    return OpenAICompatibleChatModel(client, "gpt-oss:20b", **kwargs)
+
+
+async def test_chat_streams_answer_text_but_not_reasoning() -> None:
+    requests: list[dict[str, Any]] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        body = _sse_chunks(
+            {"role": "assistant", "reasoning": "The user wants..."},  # thinking: not forwarded
+            {"content": "A 304 "},
+            {"content": "means Not Modified [1]."},
+            usage={"prompt_tokens": 120, "completion_tokens": 9},
+        )
+        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+
+    model = _chat_model(httpx.MockTransport(handle), reasoning_effort="low")
+    events = [e async for e in model.stream([ChatMessage("user", "What is 304?")])]
+
+    assert [e.text for e in events if isinstance(e, TextDelta)] == [
+        "A 304 ",
+        "means Not Modified [1].",
+    ]
+    assert events[-1] == CompletionDone(TokenUsage(prompt_tokens=120, completion_tokens=9))
+    assert requests[0]["stream"] is True
+    assert requests[0]["reasoning_effort"] == "low"
+    assert requests[0]["stream_options"] == {"include_usage": True}
+
+
+async def test_chat_errors_become_chat_model_error() -> None:
+    model = _chat_model(httpx.MockTransport(lambda request: httpx.Response(503)))
+    with pytest.raises(ChatModelError):
+        [e async for e in model.stream([ChatMessage("user", "hi")])]

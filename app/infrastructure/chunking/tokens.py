@@ -6,17 +6,7 @@ Qwen tokenizer, but chunk sizes only need to be approximately right, and it
 is fast and dependency-light.
 """
 
-from typing import Protocol
-
 import tiktoken
-
-
-class TokenCounter(Protocol):
-    def count(self, text: str) -> int: ...
-
-    def split(self, text: str, max_tokens: int) -> list[str]:
-        """Hard-split text into pieces of at most `max_tokens` (last resort)."""
-        ...
 
 
 class TiktokenCounter:

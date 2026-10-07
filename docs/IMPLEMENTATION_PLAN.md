@@ -1,6 +1,6 @@
 # Simple RAG: Implementation Plan
 
-> Status: **In progress.** Phases 0–5 are complete.
+> Status: **In progress.** Phases 0–6 are complete.
 > Last updated: 2026-10-07
 
 ---
@@ -258,6 +258,15 @@ query ──► embed_query ──► hybrid search (50 candidates)
                      LLM answer with [n] citations
 ```
 
+### 4.4.1 One-shot answering (`/ask`), as implemented
+
+- **Context assembly**: chunks the reranker graded 0 are dropped, adjacent chunks are merged into one source (removing the paragraphs repeated by chunk overlap), sources are numbered by relevance, and they are added while they fit a token budget (`ANSWER_CONTEXT_TOKENS`, default 3000).
+- **No relevant sources, no LLM call.** When every candidate is graded irrelevant, `/ask` returns a fixed "couldn't find" answer instead of letting the model improvise (verified with "What is the capital of France?").
+- **Prompt**: a versioned system prompt (`answer-v2`). Sources are wrapped in `<source id=… location=…>` delimiters and marked as untrusted. Answers must cite `[n]` and must say when the sources don't contain the answer.
+- **Citations**: `gpt-oss` cites with `【1】` (its training format) even when asked for `[1]`. A per-character mapping normalises them, and it also works on streamed tokens split mid-citation. Every response reports `cited` and `invalid_citations` (numbers that match no source).
+- **Streaming (SSE)**: `sources` → `token`… → `done`. Retrieval runs *before* the response starts, so 404/503 remain real HTTP errors. Failures during generation arrive as an in-band `error` event.
+- **Latency (local)**: about 7–12 s in total, of which search + rerank is about 4–6 s and generation about 3–5 s. The first token arrives about 1 s after search completes.
+
 ### 4.5 Agentic search (`/agent/ask`)
 
 A hand-written **tool-calling loop**. It does not use LangChain or LangGraph, because the point is to understand and control each step, and frameworks tend to cut across the architecture's boundaries.
@@ -510,9 +519,9 @@ Each phase ends with passing tests and **one or more focused git commits**.
 - [x] `rerank` flag on `/search`, stage timings
 
 ### Phase 6: One-shot RAG (`/ask`)
-- [ ] `OpenAICompatibleChatModel` (streaming, tool calls, usage capture)
-- [ ] Context assembly (dedupe, merge neighbouring chunks, token budget)
-- [ ] Answer prompt with `[n]` citations, citation validation, SSE + JSON responses
+- [x] `OpenAICompatibleChatModel` (streaming, tool calls, usage capture)
+- [x] Context assembly (dedupe, merge neighbouring chunks, token budget)
+- [x] Answer prompt with `[n]` citations, citation validation, SSE + JSON responses
 
 ### Phase 7: Agentic search (`/agent/ask`)
 - [ ] Tool schema definitions + handlers (`search_knowledge_base`, `read_chunk_context`, `list_documents`)

@@ -1,6 +1,8 @@
+from collections.abc import AsyncIterator
 from typing import Annotated
 from uuid import UUID
 
+import structlog
 from fastapi import (
     APIRouter,
     Depends,
@@ -12,12 +14,21 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import StreamingResponse
 
 from app.application.dto.pagination import PageRequest
+from app.application.use_cases.answering import (
+    AnswerCompleted,
+    AnswerDelta,
+    AskEvent,
+    AskQuery,
+    SourcesFound,
+)
 from app.application.use_cases.collections import CreateCollectionCommand
 from app.application.use_cases.ingestion import UploadDocumentCommand
 from app.application.use_cases.retrieval import SearchQuery
 from app.presentation.api.dependencies import (
+    AskQuestionDep,
     ContainerDep,
     CreateCollectionDep,
     DeleteCollectionDep,
@@ -28,11 +39,22 @@ from app.presentation.api.dependencies import (
     UploadDocumentDep,
 )
 from app.presentation.api.errors import PROBLEM_RESPONSES
+from app.presentation.api.schemas.ask import (
+    AskRequest,
+    AskResponse,
+    DoneEvent,
+    SourceResponse,
+    SourcesEvent,
+    TokenEvent,
+)
 from app.presentation.api.schemas.collections import CollectionResponse, CreateCollectionRequest
 from app.presentation.api.schemas.common import Page, page_params
 from app.presentation.api.schemas.documents import DocumentResponse
 from app.presentation.api.schemas.jobs import IngestionJobResponse, UploadDocumentResponse
 from app.presentation.api.schemas.search import SearchRequest, SearchResponse
+from app.presentation.api.sse import sse_event, sse_response
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/collections", tags=["collections"], responses=PROBLEM_RESPONSES)
 
@@ -151,3 +173,67 @@ async def search(
         )
     )
     return SearchResponse.from_domain(result)
+
+
+@router.post(
+    "/{collection_id}/ask",
+    response_model=AskResponse,
+    responses={
+        200: {
+            "description": "JSON answer, or with `stream: true` a `text/event-stream` of "
+            "`sources`, `token` (repeated), then `done` (or `error`) events",
+            "content": {"text/event-stream": {}},
+        },
+        503: PROBLEM_RESPONSES[422],
+    },
+)
+async def ask(
+    collection_id: UUID, body: AskRequest, use_case: AskQuestionDep
+) -> AskResponse | StreamingResponse:
+    """Answer a question from the collection's documents, citing sources as [n].
+
+    Retrieval (hybrid search + rerank) runs once with the question; the chat model
+    then answers using only the retrieved sources. Every response lists the sources
+    the model was given and which of them it cited.
+    """
+    query = AskQuery(
+        collection_id=collection_id,
+        question=body.question,
+        mode=body.mode,
+        top_k=body.top_k,
+        rerank=body.rerank,
+    )
+    if not body.stream:
+        return AskResponse.from_domain(await use_case.execute(query))
+
+    events = aiter(use_case.stream(query))
+    # Run retrieval before sending headers: errors like 404 (unknown collection) or
+    # 503 (model down) still become proper HTTP responses, not a broken stream.
+    first = await anext(events)
+    return sse_response(_sse(first, events))
+
+
+async def _sse(first: AskEvent, rest: AsyncIterator[AskEvent]) -> AsyncIterator[str]:
+    try:
+        yield _to_sse(first)
+        async for event in rest:
+            yield _to_sse(event)
+    except Exception as exc:  # headers are sent: report in-band, then end the stream
+        logger.exception("ask.stream_failed")
+        yield sse_event(
+            "error", {"title": "Answer generation failed", "detail": type(exc).__name__}
+        )
+
+
+def _to_sse(event: AskEvent) -> str:
+    match event:
+        case SourcesFound(sources=sources, search=search):
+            payload = SourcesEvent(
+                sources=[SourceResponse.from_domain(s) for s in sources],
+                reranker=search.reranker,
+            )
+            return sse_event("sources", payload)
+        case AnswerDelta(text=text):
+            return sse_event("token", TokenEvent(text=text))
+        case AnswerCompleted():
+            return sse_event("done", DoneEvent.from_domain(event))

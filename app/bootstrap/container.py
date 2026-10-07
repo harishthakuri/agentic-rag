@@ -12,6 +12,7 @@ from openai import AsyncOpenAI
 
 from app.application.ports.reranking import Reranker
 from app.application.ports.unit_of_work import UnitOfWork
+from app.application.use_cases.answering import AskQuestion, ContextBuilder
 from app.application.use_cases.api_keys import (
     AuthenticateApiKey,
     IssueApiKey,
@@ -36,6 +37,7 @@ from app.core.config import RerankerKind, Settings
 from app.domain.value_objects import EmbeddingSpec
 from app.infrastructure.chunking import StructureAwareChunker, TiktokenCounter
 from app.infrastructure.llm.health import ModelHealthCheck
+from app.infrastructure.llm.openai_chat import OpenAICompatibleChatModel
 from app.infrastructure.llm.openai_embedder import OpenAICompatibleEmbedder
 from app.infrastructure.parsing import DefaultParserRegistry
 from app.infrastructure.persistence.database import Database
@@ -62,8 +64,9 @@ class Container:
         self.database = Database(settings)
         self.storage = LocalFileStorage(settings.storage_dir)
         self.parsers = DefaultParserRegistry()
+        self.tokens = TiktokenCounter()
         self.chunker = StructureAwareChunker(
-            TiktokenCounter(),
+            self.tokens,
             target_tokens=settings.chunk_target_tokens,
             overlap_tokens=settings.chunk_overlap_tokens,
         )
@@ -85,6 +88,11 @@ class Container:
             max_retries=1,
         )
         self.reranker = self._build_reranker(settings)
+        self.chat_model = OpenAICompatibleChatModel(
+            self._llm_client,
+            settings.llm_model,
+            reasoning_effort=settings.llm_reasoning_effort or None,
+        )
 
     def _build_reranker(self, settings: Settings) -> Reranker | None:
         match settings.reranker:
@@ -169,6 +177,18 @@ class Container:
             self.embedder,
             self.reranker,
             rerank_depth=self.settings.rerank_depth,
+        )
+
+    # --- Answering ---------------------------------------------------------
+    def ask_question(self) -> AskQuestion:
+        return AskQuestion(
+            self.search_collection(),
+            self.chat_model,
+            ContextBuilder(
+                self.tokens,
+                token_budget=self.settings.answer_context_tokens,
+                min_rerank_score=self.settings.answer_min_rerank_grade,
+            ),
         )
 
     # --- API keys ----------------------------------------------------------

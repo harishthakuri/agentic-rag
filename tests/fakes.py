@@ -7,11 +7,19 @@ errors and commit/rollback semantics), which is what makes the ports useful.
 import copy
 import hashlib
 import math
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Self
 from uuid import UUID
 
+from app.application.ports.chat import (
+    ChatMessage,
+    ChatModelError,
+    ChatStreamEvent,
+    CompletionDone,
+    TextDelta,
+    TokenUsage,
+)
 from app.application.ports.embeddings import EmbeddingUnavailableError
 from app.application.ports.reranking import RerankCandidate, RerankError, RerankScore
 from app.application.ports.search import ChunkMatch
@@ -309,3 +317,27 @@ class FakeReranker:
             RerankScore(id=c.id, score=float(len(self._preferred & set(c.text.split()))))
             for c in candidates
         ]
+
+
+class FakeChatModel:
+    """Streams a scripted reply in small pieces and records the prompts it received."""
+
+    def __init__(
+        self, reply: str | Callable[[Sequence[ChatMessage]], str] = "", *, fail: bool = False
+    ) -> None:
+        self._reply = reply
+        self._fail = fail
+        self.calls: list[list[ChatMessage]] = []
+
+    @property
+    def model(self) -> str:
+        return "fake-chat"
+
+    async def stream(self, messages: Sequence[ChatMessage]) -> AsyncIterator[ChatStreamEvent]:
+        self.calls.append(list(messages))
+        if self._fail:
+            raise ChatModelError("simulated outage")
+        text = self._reply(messages) if callable(self._reply) else self._reply
+        for start in range(0, len(text), 4):
+            yield TextDelta(text[start : start + 4])
+        yield CompletionDone(TokenUsage(prompt_tokens=100, completion_tokens=len(text) // 4))

@@ -51,6 +51,10 @@ def embedder() -> FakeEmbedder:
 
 @pytest.fixture
 async def collection(store: InMemoryStore, embedder: FakeEmbedder) -> Collection:
+    return await seed_collection(store, embedder)
+
+
+async def seed_collection(store: InMemoryStore, embedder: FakeEmbedder) -> Collection:
     """Three chunks. The fake embedder maps identical texts to identical vectors,
     so a query equal to a chunk's contextual text is that chunk's nearest neighbour."""
     collection = Collection.create(name=CollectionName("docs"), embedding=SPEC)

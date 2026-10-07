@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.application.use_cases.answering import AskQuestion
 from app.application.use_cases.collections import (
     CreateCollection,
     DeleteCollection,
@@ -75,3 +76,4 @@ GetIngestionJobDep = Annotated[GetIngestionJob, Depends(_use_case(lambda c: c.ge
 SearchCollectionDep = Annotated[
     SearchCollection, Depends(_use_case(lambda c: c.search_collection()))
 ]
+AskQuestionDep = Annotated[AskQuestion, Depends(_use_case(lambda c: c.ask_question()))]
