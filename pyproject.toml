@@ -53,7 +53,7 @@ select = [
 ignore = ["TC001", "TC002", "TC003"]  # FastAPI/Pydantic need runtime type imports
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]  # assert is fine in tests
+"tests/**" = ["S101", "S105", "S106"]  # asserts and throwaway test credentials
 
 # ---------------------------------------------------------------------------
 # Mypy: strict everywhere except migrations
@@ -65,7 +65,7 @@ plugins = ["pydantic.mypy"]
 exclude = ["^alembic/"]
 
 [[tool.mypy.overrides]]
-module = ["pgvector.*", "testcontainers.*"]
+module = ["asyncpg.*", "pgvector.*", "testcontainers.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------

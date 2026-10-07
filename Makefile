@@ -27,6 +27,9 @@ arch: ## Verify Clean Architecture import contracts
 test: ## Run unit and e2e tests
 	uv run pytest -m "not integration and not live"
 
+# Ryuk (testcontainers' cleanup container) must mount the socket path *inside* the
+# Docker VM; this default works for Docker Desktop, Rancher Desktop and Colima.
+test-integration: export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE ?= /var/run/docker.sock
 test-integration: ## Run integration tests (requires Docker)
 	uv run pytest -m integration
 
