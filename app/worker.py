@@ -88,7 +88,7 @@ async def _main(once: bool) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Simple RAG ingestion worker")
+    parser = argparse.ArgumentParser(description="Agentic RAG ingestion worker")
     parser.add_argument("--once", action="store_true", help="Drain the queue, then exit")
     asyncio.run(_main(parser.parse_args().once))
 

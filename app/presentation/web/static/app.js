@@ -1,4 +1,4 @@
-// Simple RAG browser UI: a thin client over the /api/v1 endpoints.
+// Agentic RAG browser UI: a thin client over the /api/v1 endpoints.
 //
 // Security rules followed throughout:
 // - Model output and document text are untrusted: Markdown is rendered with
@@ -8,8 +8,17 @@
 //   this origin, in the Authorization header.
 
 const API = "/api/v1";
-const KEY_STORAGE = "simple-rag.apiKey";
-const COLLECTION_STORAGE = "simple-rag.collection";
+const KEY_STORAGE = "agentic-rag.apiKey";
+const COLLECTION_STORAGE = "agentic-rag.collection";
+
+// Carry settings over from the project's previous name (simple-rag).
+for (const name of ["apiKey", "collection"]) {
+  const old = localStorage.getItem(`simple-rag.${name}`);
+  if (old !== null && localStorage.getItem(`agentic-rag.${name}`) === null) {
+    localStorage.setItem(`agentic-rag.${name}`, old);
+  }
+  localStorage.removeItem(`simple-rag.${name}`);
+}
 
 const state = {
   apiKey: localStorage.getItem(KEY_STORAGE) || "",

@@ -55,7 +55,7 @@ async def _run(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="rag-admin", description="Simple RAG administration")
+    parser = argparse.ArgumentParser(prog="rag-admin", description="Agentic RAG administration")
     resources = parser.add_subparsers(dest="resource", required=True)
 
     api_key = resources.add_parser("api-key", help="Manage API keys")

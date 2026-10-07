@@ -1,8 +1,9 @@
 [project]
-name = "simple-rag"
+name = "agentic-rag"
 version = "0.1.0"
-description = "Retrieval-Augmented Generation with agentic search, built on Clean Architecture (FastAPI, PostgreSQL + pgvector, Ollama/OpenAI)."
+description = "Agentic RAG with hybrid search, reranking, citations and an evaluation harness. FastAPI, PostgreSQL + pgvector, Clean Architecture; runs fully local with Ollama."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.20.0",

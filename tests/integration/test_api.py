@@ -21,7 +21,7 @@ async def test_requests_without_api_key_are_rejected(api: Api) -> None:
 
 async def test_unknown_api_key_is_rejected(api: Api) -> None:
     response = await api.client.get(
-        "/api/v1/collections", headers={"Authorization": "Bearer srag_wrong"}
+        "/api/v1/collections", headers={"Authorization": "Bearer arag_wrong"}
     )
     assert response.status_code == 401
 

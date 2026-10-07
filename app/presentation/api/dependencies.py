@@ -31,7 +31,7 @@ def get_container(request: Request) -> Container:
 ContainerDep = Annotated[Container, Depends(get_container)]
 
 # --- Authentication -----------------------------------------------------------
-_bearer = HTTPBearer(auto_error=False, description="API key: `Authorization: Bearer srag_...`")
+_bearer = HTTPBearer(auto_error=False, description="API key: `Authorization: Bearer arag_...`")
 
 
 async def require_api_key(

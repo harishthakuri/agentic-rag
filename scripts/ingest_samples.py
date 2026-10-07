@@ -1,6 +1,6 @@
 """Upload sample_data/ into a collection and wait until every document is ready.
 
-    RAG_API_KEY=srag_... uv run python scripts/ingest_samples.py [--collection samples]
+    RAG_API_KEY=arag_... uv run python scripts/ingest_samples.py [--collection samples]
 
 Requires the API (`make run`) and the worker (`make worker`) to be running.
 """

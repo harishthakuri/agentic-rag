@@ -23,7 +23,7 @@ def test_ui_is_served_with_a_strict_content_security_policy(client: TestClient) 
     response = client.get("/ui/")
 
     assert response.status_code == 200
-    assert "<title>Simple RAG</title>" in response.text
+    assert "<title>Agentic RAG</title>" in response.text
     csp = response.headers["content-security-policy"]
     assert "script-src 'self'" in csp
     assert "frame-ancestors 'none'" in csp

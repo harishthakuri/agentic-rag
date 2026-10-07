@@ -1,4 +1,4 @@
-# Simple RAG: Implementation Plan
+# Agentic RAG: Implementation Plan
 
 > Status: **In progress.** Phases 0–8 are complete. See [EVALUATION.md](EVALUATION.md) for results.
 > Last updated: 2026-10-07
@@ -111,7 +111,7 @@ The layout follows the reference project (`fastapi-clean-architecture`): `domain
 ### 3.3 Project structure
 
 ```
-simple-rag/
+agentic-rag/
 ├── app/
 │   ├── domain/
 │   │   ├── models/            # Collection, Document, Chunk, IngestionJob, AgentRun, ...
@@ -437,8 +437,8 @@ Uploaded raw files are stored on local disk (`STORAGE_DIR`) behind a `FileStorag
 APP_ENV=dev
 API_KEYS_ENABLED=true
 
-DATABASE_URL=postgresql+asyncpg://simple_rag_app:***@10.10.10.5:5432/simple-rag-db
-MIGRATIONS_DATABASE_URL=postgresql+asyncpg://simple_rag_owner:***@10.10.10.5:5432/simple-rag-db
+DATABASE_URL=postgresql+asyncpg://simple_rag_app:***@localhost:5432/simple-rag-db
+MIGRATIONS_DATABASE_URL=postgresql+asyncpg://simple_rag_owner:***@localhost:5432/simple-rag-db
 
 LLM_BASE_URL=http://localhost:11434/v1
 LLM_API_KEY=ollama

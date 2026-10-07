@@ -25,7 +25,7 @@ class Database:
             max_overflow=settings.db_max_overflow,
             pool_timeout=settings.db_pool_timeout_seconds,
             pool_recycle=settings.db_pool_recycle_seconds,
-            connect_args={"server_settings": {"application_name": "simple-rag"}},
+            connect_args={"server_settings": {"application_name": "agentic-rag"}},
         )
         self.session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
             self.engine,

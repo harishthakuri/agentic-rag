@@ -19,7 +19,7 @@
 --
 -- HOW TO RUN (once, as a superuser)
 -- ---------------------------------
---   psql -h 10.10.10.5 -U postgres -d simple-rag-db -f scripts/db/001_roles.sql
+--   psql -h <db-host> -U postgres -d simple-rag-db -f scripts/db/001_roles.sql
 --
 --   At the end you are prompted (input hidden) for each role's password.
 --   psql's \password hashes the password client-side (SCRAM-SHA-256), so the
@@ -27,20 +27,20 @@
 --
 --   Re-running is safe: every statement is idempotent. To re-run without
 --   being prompted for passwords again:
---     psql -h 10.10.10.5 -U postgres -d simple-rag-db -v skip_passwords=1 \
+--     psql -h <db-host> -U postgres -d simple-rag-db -v skip_passwords=1 \
 --          -f scripts/db/001_roles.sql
 --
 -- AFTER RUNNING
 -- -------------
 --   1. Put both passwords into `.env` (URL-encode special characters):
---        DATABASE_URL=postgresql+asyncpg://simple_rag_app:<pw>@10.10.10.5:5432/simple-rag-db
---        MIGRATIONS_DATABASE_URL=postgresql+asyncpg://simple_rag_owner:<pw>@10.10.10.5:5432/simple-rag-db
+--        DATABASE_URL=postgresql+asyncpg://simple_rag_app:<pw>@<db-host>:5432/simple-rag-db
+--        MIGRATIONS_DATABASE_URL=postgresql+asyncpg://simple_rag_owner:<pw>@<db-host>:5432/simple-rag-db
 --   2. Check that pg_hba.conf on the server allows both roles from your machine,
 --      e.g.:  host  simple-rag-db  simple_rag_owner,simple_rag_app  <your-ip>/32  scram-sha-256
 --      (If an existing `host all all ...` rule covers you, nothing to do.)
 --   3. Verify the connections:
---        psql "postgresql://simple_rag_app@10.10.10.5:5432/simple-rag-db"   -c "SHOW search_path;"
---        psql "postgresql://simple_rag_owner@10.10.10.5:5432/simple-rag-db" -c "SHOW search_path;"
+--        psql "postgresql://simple_rag_app@<db-host>:5432/simple-rag-db"   -c "SHOW search_path;"
+--        psql "postgresql://simple_rag_owner@<db-host>:5432/simple-rag-db" -c "SHOW search_path;"
 --
 -- NOTE ON SHARED SERVERS
 -- ----------------------
@@ -121,7 +121,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 -- -----------------------------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS rag AUTHORIZATION simple_rag_owner;
 ALTER SCHEMA rag OWNER TO simple_rag_owner;
-COMMENT ON SCHEMA rag IS 'simple-rag application schema';
+COMMENT ON SCHEMA rag IS 'agentic-rag application schema';
 
 REVOKE ALL   ON SCHEMA rag FROM PUBLIC;
 GRANT  USAGE ON SCHEMA rag TO simple_rag_app;

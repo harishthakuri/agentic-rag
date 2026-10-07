@@ -111,7 +111,7 @@ async def main(args: argparse.Namespace) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Simple RAG evaluation")
+    parser = argparse.ArgumentParser(description="Agentic RAG evaluation")
     parser.add_argument("--dataset", type=Path, default=ROOT / "datasets" / "samples.jsonl")
     parser.add_argument("--collection", default="samples")
     parser.add_argument("--systems", default=",".join(SYSTEMS), help="ask,agent")

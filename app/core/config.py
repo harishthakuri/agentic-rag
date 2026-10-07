@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     )
 
     # --- Application -------------------------------------------------------
-    app_name: str = "Simple RAG"
+    app_name: str = "Agentic RAG"
     app_env: Environment = Environment.DEV
     log_level: str = "INFO"
     log_json: bool = False

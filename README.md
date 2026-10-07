@@ -1,4 +1,4 @@
-# Simple RAG
+# Agentic RAG
 
 Retrieval-Augmented Generation with **hybrid search**, **reranking** and **agentic search**, built on **Clean Architecture**.
 
@@ -71,8 +71,8 @@ There is no build step: plain HTML, CSS and JavaScript, with two vendored librar
 Every `/api/v1` route requires an API key. Only its hash is stored, so the key is shown once:
 
 ```bash
-make api-key name=dev        # prints srag_...
-export RAG_KEY=srag_...
+make api-key name=dev        # prints arag_...
+export RAG_KEY=arag_...
 
 curl -X POST localhost:8000/api/v1/collections \
   -H "Authorization: Bearer $RAG_KEY" -H "Content-Type: application/json" \
@@ -88,7 +88,7 @@ Uploads return `202 Accepted` immediately. The **worker** parses, chunks and emb
 
 ```bash
 make worker                                   # in a second terminal
-RAG_API_KEY=srag_... make ingest-samples      # uploads sample_data/ into collection "samples"
+RAG_API_KEY=arag_... make ingest-samples      # uploads sample_data/ into collection "samples"
 ```
 
 Or upload your own (`.md`, `.txt`, `.pdf`):
@@ -167,7 +167,7 @@ make help              # list all commands
 It's a password for programs instead of people. Any client calling `/api/v1/...` (Swagger, curl, a script, later a UI) has to send it in a header:
 
 ```
-Authorization: Bearer srag_xxxxxxxx...
+Authorization: Bearer arag_xxxxxxxx...
 ```
 
 Without a valid key, the API returns **401 Unauthorized**. Clicking **Authorize** in Swagger just makes Swagger add that header to every request for you.

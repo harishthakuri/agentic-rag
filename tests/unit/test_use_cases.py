@@ -119,6 +119,6 @@ async def test_unknown_and_revoked_keys_are_rejected_identically(
     with pytest.raises(AuthenticationError) as revoked:
         await authenticate.execute(issued.raw_key)
     with pytest.raises(AuthenticationError) as unknown:
-        await authenticate.execute("srag_does-not-exist")
+        await authenticate.execute("arag_does-not-exist")
 
     assert revoked.value.message == unknown.value.message

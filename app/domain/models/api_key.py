@@ -8,7 +8,7 @@ from app.domain.exceptions import DomainValidationError
 from app.domain.models.entity import Entity
 from app.domain.value_objects import new_id
 
-KEY_PREFIX = "srag_"
+KEY_PREFIX = "arag_"
 _DISPLAY_PREFIX_LENGTH = len(KEY_PREFIX) + 6
 # Recording usage on every request would turn each read into a write.
 _LAST_USED_RESOLUTION = timedelta(minutes=1)
@@ -24,7 +24,7 @@ def hash_api_key(raw_key: str) -> str:
 class ApiKey(Entity):
     id: UUID = field(default_factory=new_id)
     name: str
-    display_prefix: str  # e.g. "srag_Ab12Cd": safe to show, identifies the key
+    display_prefix: str  # e.g. "arag_Ab12Cd": safe to show, identifies the key
     key_hash: str
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     last_used_at: datetime | None = None
