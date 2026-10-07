@@ -4,9 +4,11 @@ Repositories never commit; the Unit of Work owns the transaction.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
+from datetime import timedelta
 from uuid import UUID
 
-from app.domain.models import ApiKey, Collection, Document
+from app.domain.models import ApiKey, Chunk, Collection, Document, IngestionJob
 from app.domain.value_objects import CollectionName, ContentHash
 
 
@@ -54,6 +56,32 @@ class DocumentRepository(ABC):
     async def delete(self, document_id: UUID) -> None: ...
 
 
+class ChunkRepository(ABC):
+    @abstractmethod
+    async def replace_for_document(self, document_id: UUID, chunks: Sequence[Chunk]) -> None:
+        """Atomically swap a document's chunks (re-ingestion replaces, never duplicates)."""
+
+    @abstractmethod
+    async def count_for_document(self, document_id: UUID) -> int: ...
+
+
+class IngestionJobRepository(ABC):
+    @abstractmethod
+    async def add(self, job: IngestionJob) -> None: ...
+
+    @abstractmethod
+    async def update(self, job: IngestionJob) -> None: ...
+
+    @abstractmethod
+    async def get(self, job_id: UUID) -> IngestionJob | None: ...
+
+    @abstractmethod
+    async def claim_next(self, worker_id: str, lease: timedelta) -> IngestionJob | None:
+        """Atomically claim the next runnable job: queued and due, or running with an
+        expired lease (its worker crashed). Concurrent workers never get the same job.
+        The returned job is RUNNING, locked by `worker_id`, with `attempts` incremented."""
+
+
 class ApiKeyRepository(ABC):
     @abstractmethod
     async def add(self, api_key: ApiKey) -> None: ...
@@ -71,4 +99,10 @@ class ApiKeyRepository(ABC):
     async def list(self) -> list[ApiKey]: ...
 
 
-__all__ = ["ApiKeyRepository", "CollectionRepository", "DocumentRepository"]
+__all__ = [
+    "ApiKeyRepository",
+    "ChunkRepository",
+    "CollectionRepository",
+    "DocumentRepository",
+    "IngestionJobRepository",
+]

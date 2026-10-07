@@ -1,50 +1,12 @@
 """HTTP API against a real, migrated database, connected as the least-privilege role."""
 
-from collections.abc import AsyncIterator
-from dataclasses import dataclass
-
-import asyncpg
 import pytest
-from httpx import ASGITransport, AsyncClient
-from pydantic import SecretStr
 
-from app.bootstrap.container import Container
-from app.core.config import Environment, Settings
 from app.domain.models import Document, DocumentType
 from app.domain.value_objects import ContentHash
-from app.main import create_app
-from tests.integration.conftest import PostgresUrls
+from tests.integration.conftest import Api
 
 pytestmark = pytest.mark.integration
-
-
-@dataclass
-class Api:
-    client: AsyncClient
-    container: Container
-    headers: dict[str, str]
-
-
-@pytest.fixture
-async def api(migrated_postgres: PostgresUrls) -> AsyncIterator[Api]:
-    settings = Settings(
-        _env_file=None,
-        app_env=Environment.TEST,
-        database_url=SecretStr(migrated_postgres.app_sqlalchemy),
-    )
-    app = create_app(settings)
-    async with app.router.lifespan_context(app):
-        container: Container = app.state.container
-        issued = await container.issue_api_key().execute("integration-tests")
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            yield Api(client, container, {"Authorization": f"Bearer {issued.raw_key}"})
-
-    # Clean slate for the next test (deletes cascade to documents and chunks).
-    conn = await asyncpg.connect(migrated_postgres.app)
-    try:
-        await conn.execute("DELETE FROM collections; DELETE FROM api_keys;")
-    finally:
-        await conn.close()
 
 
 # --- Authentication -----------------------------------------------------------
@@ -66,8 +28,8 @@ async def test_unknown_api_key_is_rejected(api: Api) -> None:
 
 async def test_health_needs_no_api_key(api: Api) -> None:
     response = await api.client.get("/health/ready")
-    assert response.status_code == 200
-    assert response.json()["status"] == "ready"
+    database = next(d for d in response.json()["dependencies"] if d["name"] == "database")
+    assert database["healthy"] is True
 
 
 # --- Collections --------------------------------------------------------------

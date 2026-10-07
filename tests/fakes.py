@@ -5,15 +5,26 @@ errors and commit/rollback semantics), which is what makes the ports useful.
 """
 
 import copy
+import hashlib
+import math
+from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 from typing import Self
 from uuid import UUID
 
+from app.application.ports.embeddings import EmbeddingUnavailableError
 from app.application.ports.unit_of_work import UnitOfWork
 from app.application.use_cases.collections import CollectionAlreadyExistsError
 from app.application.use_cases.documents import DuplicateDocumentError
-from app.domain.models import ApiKey, Collection, Document
-from app.domain.repositories import ApiKeyRepository, CollectionRepository, DocumentRepository
-from app.domain.value_objects import CollectionName, ContentHash
+from app.domain.models import ApiKey, Chunk, Collection, Document, IngestionJob, JobStatus
+from app.domain.repositories import (
+    ApiKeyRepository,
+    ChunkRepository,
+    CollectionRepository,
+    DocumentRepository,
+    IngestionJobRepository,
+)
+from app.domain.value_objects import CollectionName, ContentHash, EmbeddingSpec
 
 
 class InMemoryCollectionRepository(CollectionRepository):
@@ -95,14 +106,64 @@ class InMemoryApiKeyRepository(ApiKeyRepository):
         return list(self.rows.values())
 
 
+class InMemoryChunkRepository(ChunkRepository):
+    def __init__(self, rows: dict[UUID, list[Chunk]]) -> None:
+        self.rows = rows
+
+    async def replace_for_document(self, document_id: UUID, chunks: Sequence[Chunk]) -> None:
+        self.rows[document_id] = list(chunks)
+
+    async def count_for_document(self, document_id: UUID) -> int:
+        return len(self.rows.get(document_id, []))
+
+
+class InMemoryIngestionJobRepository(IngestionJobRepository):
+    def __init__(self, rows: dict[UUID, IngestionJob]) -> None:
+        self.rows = rows
+
+    async def add(self, job: IngestionJob) -> None:
+        self.rows[job.id] = job
+
+    async def update(self, job: IngestionJob) -> None:
+        self.rows[job.id] = job
+
+    async def get(self, job_id: UUID) -> IngestionJob | None:
+        return self.rows.get(job_id)
+
+    async def claim_next(self, worker_id: str, lease: timedelta) -> IngestionJob | None:
+        now = datetime.now(UTC)
+        due = [
+            j
+            for j in self.rows.values()
+            if (j.status is JobStatus.QUEUED and j.run_after <= now)
+            or (
+                j.status is JobStatus.RUNNING
+                and j.locked_at is not None
+                and j.locked_at < now - lease
+                and j.attempts < j.max_attempts
+            )
+        ]
+        if not due:
+            return None
+        job = min(due, key=lambda j: j.run_after)
+        job.status, job.attempts = JobStatus.RUNNING, job.attempts + 1
+        job.locked_at, job.locked_by = now, worker_id
+        return job
+
+
 class InMemoryStore:
     """The 'database': committed state shared by every unit of work."""
 
     def __init__(self) -> None:
         self.collections: dict[UUID, Collection] = {}
         self.documents: dict[UUID, Document] = {}
+        self.chunks: dict[UUID, list[Chunk]] = {}
+        self.ingestion_jobs: dict[UUID, IngestionJob] = {}
         self.api_keys: dict[UUID, ApiKey] = {}
         self.commits = 0
+
+
+_TABLES = ("collections", "documents", "chunks", "ingestion_jobs", "api_keys")
 
 
 class InMemoryUnitOfWork(UnitOfWork):
@@ -112,19 +173,65 @@ class InMemoryUnitOfWork(UnitOfWork):
         self._store = store
 
     async def __aenter__(self) -> Self:
-        self._collections = copy.deepcopy(self._store.collections)
-        self._documents = copy.deepcopy(self._store.documents)
-        self._api_keys = copy.deepcopy(self._store.api_keys)
-        self.collections = InMemoryCollectionRepository(self._collections)
-        self.documents = InMemoryDocumentRepository(self._documents)
-        self.api_keys = InMemoryApiKeyRepository(self._api_keys)
+        self._tables = {name: copy.deepcopy(getattr(self._store, name)) for name in _TABLES}
+        self.collections = InMemoryCollectionRepository(self._tables["collections"])
+        self.documents = InMemoryDocumentRepository(self._tables["documents"])
+        self.chunks = InMemoryChunkRepository(self._tables["chunks"])
+        self.ingestion_jobs = InMemoryIngestionJobRepository(self._tables["ingestion_jobs"])
+        self.api_keys = InMemoryApiKeyRepository(self._tables["api_keys"])
         return await super().__aenter__()
 
     async def commit(self) -> None:
-        self._store.collections = copy.deepcopy(self._collections)
-        self._store.documents = copy.deepcopy(self._documents)
-        self._store.api_keys = copy.deepcopy(self._api_keys)
+        for name, rows in self._tables.items():
+            setattr(self._store, name, copy.deepcopy(rows))
         self._store.commits += 1
 
     async def rollback(self) -> None:
         pass  # uncommitted copies are simply dropped
+
+
+class InMemoryFileStorage:
+    def __init__(self) -> None:
+        self.files: dict[str, bytes] = {}
+
+    async def save(self, key: str, content: bytes) -> None:
+        self.files[key] = content
+
+    async def read(self, key: str) -> bytes:
+        return self.files[key]
+
+    async def delete_prefix(self, prefix: str) -> None:
+        for key in [k for k in self.files if k.startswith(prefix)]:
+            del self.files[key]
+
+
+class FakeEmbedder:
+    """Deterministic vectors derived from a hash of the text: identical texts get
+    identical vectors, different texts different ones. No model required."""
+
+    def __init__(self, spec: EmbeddingSpec, *, fail_times: int = 0) -> None:
+        self._spec = spec
+        self.fail_times = fail_times
+        self.document_calls: list[list[str]] = []
+        self.query_calls: list[str] = []
+
+    @property
+    def spec(self) -> EmbeddingSpec:
+        return self._spec
+
+    async def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
+        if self.fail_times > 0:
+            self.fail_times -= 1
+            raise EmbeddingUnavailableError("simulated outage")
+        self.document_calls.append(list(texts))
+        return [self._vector(t) for t in texts]
+
+    async def embed_query(self, text: str) -> list[float]:
+        self.query_calls.append(text)
+        return self._vector(text)
+
+    def _vector(self, text: str) -> list[float]:
+        seed = hashlib.sha256(text.encode()).digest()
+        raw = [seed[i % len(seed)] - 127.5 for i in range(self._spec.dimensions)]
+        norm = math.sqrt(sum(x * x for x in raw))
+        return [x / norm for x in raw]

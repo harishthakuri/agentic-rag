@@ -1,21 +1,35 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 
 from app.application.dto.pagination import PageRequest
 from app.application.use_cases.collections import CreateCollectionCommand
+from app.application.use_cases.ingestion import UploadDocumentCommand
 from app.presentation.api.dependencies import (
+    ContainerDep,
     CreateCollectionDep,
     DeleteCollectionDep,
     GetCollectionDep,
     ListCollectionsDep,
     ListDocumentsDep,
+    UploadDocumentDep,
 )
 from app.presentation.api.errors import PROBLEM_RESPONSES
 from app.presentation.api.schemas.collections import CollectionResponse, CreateCollectionRequest
 from app.presentation.api.schemas.common import Page, page_params
 from app.presentation.api.schemas.documents import DocumentResponse
+from app.presentation.api.schemas.jobs import IngestionJobResponse, UploadDocumentResponse
 
 router = APIRouter(prefix="/collections", tags=["collections"], responses=PROBLEM_RESPONSES)
 
@@ -69,4 +83,46 @@ async def list_documents(
         items=[DocumentResponse.from_domain(d) for d in documents],
         limit=page.limit,
         offset=page.offset,
+    )
+
+
+@router.post(
+    "/{collection_id}/documents",
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={status.HTTP_413_CONTENT_TOO_LARGE: PROBLEM_RESPONSES[422]},
+)
+async def upload_document(
+    collection_id: UUID,
+    use_case: UploadDocumentDep,
+    container: ContainerDep,
+    request: Request,
+    response: Response,
+    file: Annotated[UploadFile, File(description="Markdown (.md), text (.txt) or PDF (.pdf)")],
+    title: Annotated[str | None, Form(max_length=500)] = None,
+) -> UploadDocumentResponse:
+    """Upload a document for ingestion.
+
+    Returns **202 Accepted** immediately: parsing, chunking and embedding happen in
+    the background worker (`make worker`). Poll the job (see the `Location` header)
+    or the document until its status is `ready`.
+    """
+    max_bytes = container.settings.max_upload_mb * 1024 * 1024
+    content = await file.read(max_bytes + 1)
+    if len(content) > max_bytes:
+        raise HTTPException(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            f"The file exceeds the {container.settings.max_upload_mb} MB upload limit",
+        )
+    uploaded = await use_case.execute(
+        UploadDocumentCommand(
+            collection_id=collection_id,
+            filename=file.filename or "upload",
+            content=content,
+            title=title,
+        )
+    )
+    response.headers["Location"] = str(request.url_for("get_job", job_id=uploaded.job.id))
+    return UploadDocumentResponse(
+        document=DocumentResponse.from_domain(uploaded.document),
+        job=IngestionJobResponse.from_domain(uploaded.job),
     )

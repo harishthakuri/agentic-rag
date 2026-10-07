@@ -1,6 +1,6 @@
 # Simple RAG: Implementation Plan
 
-> Status: **In progress.** Phases 0–2 are complete.
+> Status: **In progress.** Phases 0–3 are complete.
 > Last updated: 2026-10-07
 
 ---
@@ -47,7 +47,7 @@ A **knowledge-base API**. You upload Markdown and PDF documents into named **col
 | Chat / agent LLM | **Ollama → `gpt-oss:20b`** by default; any OpenAI model via config | Local, free and private by default; switch providers with environment variables |
 | LLM client | **OpenAI Python SDK** | One SDK for both Ollama (OpenAI-compatible API) and OpenAI, so the provider is just `base_url` + `api_key` |
 | Reranker | **LLM-based reranker** (v1), **cross-encoder** (later) | Behind a `Reranker` port (see §5) |
-| Document parsing | `markdown-it-py` (Markdown), `pypdf` (PDF) | Lightweight and permissively licensed |
+| Document parsing | Small line-based Markdown parser, `pypdf` (PDF) | Heading-aware (code-fence safe), lightweight, permissively licensed |
 | Token counting | `tiktoken` | Chunk sizing in tokens rather than characters |
 | Background jobs | **Postgres-backed job queue** (`FOR UPDATE SKIP LOCKED`) + a worker process | Reliable async ingestion without Redis or Celery |
 | Logging | `structlog` (JSON in prod, pretty in dev) | Structured logs with request ID and per-stage timings |
@@ -483,12 +483,12 @@ Each phase ends with passing tests and **one or more focused git commits**.
 - [x] Problem Details error handling, API-key auth + `rag-admin` CLI
 
 ### Phase 3: Ingestion pipeline
-- [ ] `FileStorage` port + local disk adapter; upload endpoint (`202` + job)
-- [ ] `MarkdownParser`, `PdfParser` → a normalised `ParsedDocument` (sections, pages)
-- [ ] `StructureAwareChunker` with contextual headers + token counting (thorough unit tests)
-- [ ] `OpenAICompatibleEmbedder` (`dimensions=1024`, batching, retries, query instruction)
-- [ ] Postgres job queue + `app/worker.py` (`SKIP LOCKED`, retries with backoff, crash-safe)
-- [ ] Sample corpus in `sample_data/` and an ingest script
+- [x] `FileStorage` port + local disk adapter; upload endpoint (`202` + job)
+- [x] `MarkdownParser`, `PdfParser` → a normalised `ParsedDocument` (sections, pages)
+- [x] `StructureAwareChunker` with contextual headers + token counting (thorough unit tests)
+- [x] `OpenAICompatibleEmbedder` (`dimensions=1024`, batching, retries, query instruction)
+- [x] Postgres job queue + `app/worker.py` (`SKIP LOCKED`, retries with backoff, crash-safe)
+- [x] Sample corpus in `sample_data/` and an ingest script
 
 ### Phase 4: Retrieval
 - [ ] `PgHybridSearchRepository`: `vector`, `keyword`, `hybrid` (RRF) modes with iterative scan

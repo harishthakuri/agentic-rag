@@ -13,6 +13,7 @@ from app.application.use_cases.collections import (
     ListCollections,
 )
 from app.application.use_cases.documents import DeleteDocument, GetDocument, ListDocuments
+from app.application.use_cases.ingestion import GetIngestionJob, UploadDocument
 from app.application.use_cases.system.check_readiness import CheckReadiness
 from app.bootstrap.container import Container
 from app.domain.exceptions import AuthenticationError
@@ -68,3 +69,5 @@ DeleteCollectionDep = Annotated[
 ListDocumentsDep = Annotated[ListDocuments, Depends(_use_case(lambda c: c.list_documents()))]
 GetDocumentDep = Annotated[GetDocument, Depends(_use_case(lambda c: c.get_document()))]
 DeleteDocumentDep = Annotated[DeleteDocument, Depends(_use_case(lambda c: c.delete_document()))]
+UploadDocumentDep = Annotated[UploadDocument, Depends(_use_case(lambda c: c.upload_document()))]
+GetIngestionJobDep = Annotated[GetIngestionJob, Depends(_use_case(lambda c: c.get_ingestion_job()))]

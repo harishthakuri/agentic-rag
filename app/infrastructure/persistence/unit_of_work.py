@@ -9,11 +9,15 @@ from app.application.ports.unit_of_work import UnitOfWork
 from app.infrastructure.persistence.repositories.api_key_repository import (
     SqlAlchemyApiKeyRepository,
 )
+from app.infrastructure.persistence.repositories.chunk_repository import SqlAlchemyChunkRepository
 from app.infrastructure.persistence.repositories.collection_repository import (
     SqlAlchemyCollectionRepository,
 )
 from app.infrastructure.persistence.repositories.document_repository import (
     SqlAlchemyDocumentRepository,
+)
+from app.infrastructure.persistence.repositories.ingestion_job_repository import (
+    SqlAlchemyIngestionJobRepository,
 )
 
 
@@ -32,6 +36,8 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         self._session = self._session_factory()
         self.collections = SqlAlchemyCollectionRepository(self._session)
         self.documents = SqlAlchemyDocumentRepository(self._session)
+        self.chunks = SqlAlchemyChunkRepository(self._session)
+        self.ingestion_jobs = SqlAlchemyIngestionJobRepository(self._session)
         self.api_keys = SqlAlchemyApiKeyRepository(self._session)
         return await super().__aenter__()
 

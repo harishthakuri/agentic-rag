@@ -61,6 +61,18 @@ class Settings(BaseSettings):
     embedding_api_key: SecretStr = SecretStr("ollama")
     embedding_model: str = "qwen3-embedding:8b"
     embedding_dim: int = Field(default=1024, gt=0, le=2000)  # pgvector HNSW limit for `vector`
+    embedding_batch_size: int = Field(default=32, gt=0)
+    embedding_timeout_seconds: float = 120.0
+
+    # --- Ingestion ---------------------------------------------------------
+    max_upload_mb: int = Field(default=25, gt=0)
+    chunk_target_tokens: int = Field(default=500, ge=100)
+    chunk_overlap_tokens: int = Field(default=60, ge=0)
+    ingestion_max_attempts: int = Field(default=3, ge=1)
+    worker_poll_interval_seconds: float = Field(default=2.0, gt=0)
+    # A running job whose worker hasn't finished within the lease is assumed crashed
+    # and handed to another worker.
+    worker_job_lease_seconds: int = Field(default=900, gt=0)
 
     # --- Retrieval ---------------------------------------------------------
     reranker: RerankerKind = RerankerKind.LLM

@@ -16,6 +16,23 @@ class DocumentType(StrEnum):
     PLAIN_TEXT = "text/plain"
     PDF = "application/pdf"
 
+    @classmethod
+    def from_filename(cls, filename: str) -> "DocumentType":
+        """Decide by extension; clients' Content-Type headers are often generic or wrong."""
+        extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if extension not in _EXTENSIONS:
+            supported = ", ".join(f".{ext}" for ext in sorted(_EXTENSIONS))
+            raise DomainValidationError(f"Unsupported file type. Supported: {supported}")
+        return _EXTENSIONS[extension]
+
+
+_EXTENSIONS = {
+    "md": DocumentType.MARKDOWN,
+    "markdown": DocumentType.MARKDOWN,
+    "txt": DocumentType.PLAIN_TEXT,
+    "pdf": DocumentType.PDF,
+}
+
 
 class DocumentStatus(StrEnum):
     PENDING = "pending"  # uploaded, waiting for the ingestion worker
@@ -76,6 +93,12 @@ class Document(Entity):
 
     def requeue(self) -> None:
         self._transition(DocumentStatus.PENDING)
+
+    def retitle(self, title: str) -> None:
+        if not title.strip():
+            raise DomainValidationError("Document title must not be empty")
+        self.title = title.strip()
+        self.updated_at = datetime.now(UTC)
 
     def _transition(self, target: DocumentStatus) -> None:
         if target not in _ALLOWED_TRANSITIONS[self.status]:

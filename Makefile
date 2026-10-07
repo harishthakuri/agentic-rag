@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install run api-key fmt lint typecheck arch test test-integration check migrate migration downgrade
+.PHONY: help install run worker api-key ingest-samples fmt lint typecheck arch test test-integration check migrate migration downgrade
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -11,8 +11,14 @@ install: ## Install dependencies and git hooks
 run: ## Run the API with auto-reload
 	uv run uvicorn app.main:create_app --factory --reload
 
+worker: ## Run the ingestion worker (parses, chunks and embeds uploaded documents)
+	uv run python -m app.worker
+
 api-key: ## Issue an API key: make api-key name=dev
 	uv run python -m app.presentation.cli api-key create --name "$(name)"
+
+ingest-samples: ## Upload sample_data/ (needs RAG_API_KEY, make run and make worker)
+	uv run python scripts/ingest_samples.py
 
 fmt: ## Format code
 	uv run ruff format .

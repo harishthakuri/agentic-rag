@@ -19,7 +19,7 @@ from app.application.use_cases.collections import (
 from app.application.use_cases.documents import ListDocuments
 from app.domain.exceptions import AuthenticationError, DomainValidationError
 from app.domain.value_objects import EmbeddingSpec, new_id
-from tests.fakes import InMemoryStore, InMemoryUnitOfWork
+from tests.fakes import InMemoryFileStorage, InMemoryStore, InMemoryUnitOfWork
 
 EMBEDDING = EmbeddingSpec(model="qwen3-embedding:8b", dimensions=1024)
 
@@ -72,7 +72,7 @@ async def test_get_and_delete_unknown_collection_raise_not_found(
     with pytest.raises(CollectionNotFoundError):
         await GetCollection(uow_factory).execute(new_id())
     with pytest.raises(CollectionNotFoundError):
-        await DeleteCollection(uow_factory).execute(new_id())
+        await DeleteCollection(uow_factory, InMemoryFileStorage()).execute(new_id())
 
 
 async def test_list_collections_paginates_by_name(uow_factory: UnitOfWorkFactory) -> None:

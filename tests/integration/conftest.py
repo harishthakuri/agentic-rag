@@ -7,14 +7,22 @@ the real least-privilege setup rather than a superuser shortcut.
 
 import socket
 import time
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+import asyncpg
 import pytest
 from alembic import command
 from alembic.config import Config
+from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 from testcontainers.community.postgres import PostgresContainer
+
+from app.bootstrap.container import Container
+from app.core.config import Environment, Settings
+from app.main import create_app
+from tests.fakes import FakeEmbedder
 
 PGVECTOR_IMAGE = "pgvector/pgvector:pg16"
 DB_NAME = "simple-rag-db"
@@ -107,3 +115,39 @@ def migrated_postgres(postgres: PostgresUrls) -> PostgresUrls:
     config.attributes["configure_logging"] = False
     command.upgrade(config, "head")
     return postgres
+
+
+# --- API over the migrated database -------------------------------------------
+@dataclass
+class Api:
+    client: AsyncClient
+    container: Container
+    headers: dict[str, str]
+    embedder: FakeEmbedder
+
+
+@pytest.fixture
+async def api(migrated_postgres: PostgresUrls, tmp_path: Path) -> AsyncIterator[Api]:
+    """The real app (least-privilege DB role, real storage on a temp dir), with a
+    deterministic fake embedder so tests don't need Ollama."""
+    settings = Settings(
+        _env_file=None,
+        app_env=Environment.TEST,
+        database_url=SecretStr(migrated_postgres.app_sqlalchemy),
+        storage_dir=tmp_path / "uploads",
+    )
+    app = create_app(settings)
+    async with app.router.lifespan_context(app):
+        container: Container = app.state.container
+        embedder = FakeEmbedder(container.embedder.spec)
+        container.embedder = embedder  # type: ignore[assignment]
+        issued = await container.issue_api_key().execute("integration-tests")
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            yield Api(client, container, {"Authorization": f"Bearer {issued.raw_key}"}, embedder)
+
+    # Clean slate for the next test (deletes cascade to documents, chunks and jobs).
+    conn = await asyncpg.connect(migrated_postgres.app)
+    try:
+        await conn.execute("DELETE FROM collections; DELETE FROM api_keys;")
+    finally:
+        await conn.close()

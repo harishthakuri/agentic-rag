@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from app.application.dto.pagination import PageRequest
+from app.application.ports.storage import FileStorage
 from app.application.ports.unit_of_work import UnitOfWorkFactory
 from app.domain.exceptions import ConflictError, NotFoundError
 from app.domain.models import Collection
@@ -68,10 +69,13 @@ class ListCollections:
 
 
 class DeleteCollection:
-    """Deletes the collection with all its documents, chunks and jobs (DB cascade)."""
+    """Deletes the collection with all its documents, chunks and jobs (DB cascade),
+    then its stored files. Files go last: a leftover file is harmless, a document
+    row pointing at a missing file is not."""
 
-    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+    def __init__(self, uow_factory: UnitOfWorkFactory, storage: FileStorage) -> None:
         self._uow_factory = uow_factory
+        self._storage = storage
 
     async def execute(self, collection_id: UUID) -> None:
         async with self._uow_factory() as uow:
@@ -79,6 +83,7 @@ class DeleteCollection:
                 raise CollectionNotFoundError(collection_id)
             await uow.collections.delete(collection_id)
             await uow.commit()
+        await self._storage.delete_prefix(f"{collection_id}/")
 
 
 __all__ = [

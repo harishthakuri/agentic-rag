@@ -9,12 +9,20 @@ from collections.abc import Callable
 from types import TracebackType
 from typing import Self
 
-from app.domain.repositories import ApiKeyRepository, CollectionRepository, DocumentRepository
+from app.domain.repositories import (
+    ApiKeyRepository,
+    ChunkRepository,
+    CollectionRepository,
+    DocumentRepository,
+    IngestionJobRepository,
+)
 
 
 class UnitOfWork(ABC):
     collections: CollectionRepository
     documents: DocumentRepository
+    chunks: ChunkRepository
+    ingestion_jobs: IngestionJobRepository
     api_keys: ApiKeyRepository
 
     async def __aenter__(self) -> Self:
