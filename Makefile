@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install run fmt lint typecheck arch test test-integration check migrate migration downgrade
+.PHONY: help install run api-key fmt lint typecheck arch test test-integration check migrate migration downgrade
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -10,6 +10,9 @@ install: ## Install dependencies and git hooks
 
 run: ## Run the API with auto-reload
 	uv run uvicorn app.main:create_app --factory --reload
+
+api-key: ## Issue an API key: make api-key name=dev
+	uv run python -m app.presentation.cli api-key create --name "$(name)"
 
 fmt: ## Format code
 	uv run ruff format .

@@ -5,8 +5,10 @@
   Alembic autogenerate produces stable, reviewable migrations.
 """
 
-from sqlalchemy import MetaData
-from sqlalchemy.orm import DeclarativeBase
+from datetime import datetime
+
+from sqlalchemy import DateTime, MetaData, func
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 DB_SCHEMA = "rag"
 
@@ -21,3 +23,9 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(schema=DB_SCHEMA, naming_convention=NAMING_CONVENTION)
+    type_annotation_map = {datetime: DateTime(timezone=True)}  # noqa: RUF012 (SQLAlchemy API)
+
+
+class TimestampMixin:
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())

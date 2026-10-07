@@ -8,23 +8,26 @@ import asyncio
 from logging.config import fileConfig
 from typing import Any, Literal
 
+from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from alembic import context
 from app.core.config import get_settings
 from app.infrastructure.persistence import orm  # noqa: F401  (registers every entity)
 from app.infrastructure.persistence.orm.base import DB_SCHEMA, Base
 
 config = context.config
-if config.config_file_name is not None:
+# Programmatic callers (tests) pass their own URL and keep their logging setup.
+if config.config_file_name is not None and config.attributes.get("configure_logging", True):
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
 
 
 def _migrations_url() -> str:
+    if url := config.attributes.get("database_url"):
+        return str(url)
     settings = get_settings()
     if settings.migrations_database_url is None:
         raise RuntimeError("MIGRATIONS_DATABASE_URL is not set (see .env.example)")
@@ -70,7 +73,16 @@ def _run_sync_migrations(connection: Connection) -> None:
 
 
 async def run_migrations_online() -> None:
-    engine = create_async_engine(_migrations_url(), poolclass=pool.NullPool)
+    # The roles' default search_path is "rag, public", which makes SQLAlchemy treat
+    # `rag` as the unnamed default schema and breaks autogenerate's comparison.
+    # Following Alembic's guidance, keep the target schema off the search_path while
+    # migrating. It must be a connection parameter: SQLAlchemy reads the default
+    # schema once, on first connect. All tables are schema-qualified anyway.
+    engine = create_async_engine(
+        _migrations_url(),
+        poolclass=pool.NullPool,
+        connect_args={"server_settings": {"search_path": "public"}},
+    )
     async with engine.connect() as connection:
         await connection.run_sync(_run_sync_migrations)
     await engine.dispose()

@@ -4,9 +4,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.application.use_cases.system.check_readiness import CheckReadiness
+from app.bootstrap.container import Container
 from app.core.config import Settings
 from app.main import create_app
-from app.presentation.api.dependencies import get_check_readiness
 
 
 class StubCheck:
@@ -35,10 +35,12 @@ def test_live_returns_ok_and_request_id(client: TestClient) -> None:
 
 @pytest.mark.parametrize(("healthy", "expected_status"), [(True, 200), (False, 503)])
 def test_ready_reflects_dependency_health(
-    client: TestClient, healthy: bool, expected_status: int
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, healthy: bool, expected_status: int
 ) -> None:
-    client.app.dependency_overrides[get_check_readiness] = lambda: CheckReadiness(  # type: ignore[attr-defined]
-        [StubCheck("database", healthy)]
+    monkeypatch.setattr(
+        Container,
+        "check_readiness",
+        lambda self: CheckReadiness([StubCheck("database", healthy)]),
     )
 
     response = client.get("/health/ready")

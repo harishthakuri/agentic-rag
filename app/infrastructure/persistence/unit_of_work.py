@@ -6,6 +6,15 @@ from typing import Self
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.ports.unit_of_work import UnitOfWork
+from app.infrastructure.persistence.repositories.api_key_repository import (
+    SqlAlchemyApiKeyRepository,
+)
+from app.infrastructure.persistence.repositories.collection_repository import (
+    SqlAlchemyCollectionRepository,
+)
+from app.infrastructure.persistence.repositories.document_repository import (
+    SqlAlchemyDocumentRepository,
+)
 
 
 class SqlAlchemyUnitOfWork(UnitOfWork):
@@ -21,8 +30,9 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
 
     async def __aenter__(self) -> Self:
         self._session = self._session_factory()
-        # Repositories are attached here as they are implemented, e.g.:
-        # self.collections = SqlAlchemyCollectionRepository(self._session)
+        self.collections = SqlAlchemyCollectionRepository(self._session)
+        self.documents = SqlAlchemyDocumentRepository(self._session)
+        self.api_keys = SqlAlchemyApiKeyRepository(self._session)
         return await super().__aenter__()
 
     async def __aexit__(

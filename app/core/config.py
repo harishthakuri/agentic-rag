@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_json: bool = False
     cors_origins: list[str] = Field(default_factory=list)
+    # Require `Authorization: Bearer <api key>` on /api/v1. Disable only for local experiments.
+    auth_enabled: bool = True
 
     # --- Database ----------------------------------------------------------
     # Runtime connection: least-privilege role (DML only).

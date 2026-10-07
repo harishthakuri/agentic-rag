@@ -1,16 +1,22 @@
 """Unit of Work port.
 
 A use case opens one Unit of Work, uses the repositories it exposes, and
-commits once. Either everything succeeds or nothing is written. Repository
-attributes are added here as the domain grows (collections, documents, ...).
+commits once. Either everything succeeds or nothing is written.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from types import TracebackType
 from typing import Self
 
+from app.domain.repositories import ApiKeyRepository, CollectionRepository, DocumentRepository
+
 
 class UnitOfWork(ABC):
+    collections: CollectionRepository
+    documents: DocumentRepository
+    api_keys: ApiKeyRepository
+
     async def __aenter__(self) -> Self:
         return self
 
@@ -28,3 +34,7 @@ class UnitOfWork(ABC):
 
     @abstractmethod
     async def rollback(self) -> None: ...
+
+
+# Use cases receive a factory and open a fresh Unit of Work per operation.
+UnitOfWorkFactory = Callable[[], UnitOfWork]

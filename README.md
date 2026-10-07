@@ -15,13 +15,13 @@ presentation  →  bootstrap (composition root)  →  infrastructure  →  appli
 
 Dependencies point inwards only. `domain` and `application` contain no framework code. The rule is enforced by [import-linter](https://github.com/seddonym/import-linter) (`make arch`).
 
-| Layer | Responsibility |
-|---|---|
-| `app/domain` | Entities, value objects, repository interfaces, domain errors |
-| `app/application` | Use cases and ports (LLM, embeddings, reranker, unit of work, ...) |
+| Layer                | Responsibility                                                            |
+| -------------------- | ------------------------------------------------------------------------- |
+| `app/domain`         | Entities, value objects, repository interfaces, domain errors             |
+| `app/application`    | Use cases and ports (LLM, embeddings, reranker, unit of work, ...)        |
 | `app/infrastructure` | Adapters: SQLAlchemy/pgvector, OpenAI-compatible clients, parsers, worker |
-| `app/presentation` | FastAPI routers, request/response schemas, middleware |
-| `app/bootstrap` | Composition root that wires adapters to ports |
+| `app/presentation`   | FastAPI routers, request/response schemas, middleware                     |
+| `app/bootstrap`      | Composition root that wires adapters to ports                             |
 
 ## Getting started
 
@@ -45,6 +45,9 @@ psql -h <host> -U postgres -d simple-rag-db -f scripts/db/001_roles.sql
 # 2. Configuration
 cp .env.example .env        # fill in the passwords you chose in step 1
 
+# 2.1 Verify the database connection
+uv run python -c "import asyncio; from app.core.config import get_settings; from app.bootstrap.container import Container; c=Container(get_settings()); print(asyncio.run(c.check_readiness().execute()))"
+
 # 3. Dependencies, git hooks and migrations
 make install
 make migrate
@@ -52,6 +55,24 @@ make migrate
 # 4. Run
 make run                    # http://localhost:8000/docs
 ```
+
+## Using the API
+
+Every `/api/v1` route requires an API key. Only its hash is stored, so the key is shown once:
+
+```bash
+make api-key name=dev        # prints srag_...
+export RAG_KEY=srag_...
+
+curl -X POST localhost:8000/api/v1/collections \
+  -H "Authorization: Bearer $RAG_KEY" -H "Content-Type: application/json" \
+  -d '{"name": "kubernetes-docs", "description": "K8s notes"}'
+
+uv run python -m app.presentation.cli api-key list            # list keys
+uv run python -m app.presentation.cli api-key revoke <id>     # revoke a key
+```
+
+Errors use [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`).
 
 ## Development
 

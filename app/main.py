@@ -14,6 +14,7 @@ from app.bootstrap.container import Container
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.presentation.api import health
+from app.presentation.api.errors import register_error_handlers
 from app.presentation.api.middleware import request_context_middleware
 from app.presentation.api.v1.router import api_v1_router
 
@@ -42,6 +43,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
 
+    register_error_handlers(app)
     app.middleware("http")(request_context_middleware)
     if settings.cors_origins:
         app.add_middleware(

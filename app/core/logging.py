@@ -60,3 +60,5 @@ def configure_logging(level: str = "INFO", *, json_logs: bool = False) -> None:
         uvicorn_logger = logging.getLogger(name)
         uvicorn_logger.handlers.clear()
         uvicorn_logger.propagate = True
+    # The request middleware logs every request with more context (request_id, duration).
+    logging.getLogger("uvicorn.access").disabled = True

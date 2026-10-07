@@ -1,5 +1,7 @@
 """Verifies the least-privilege guarantees of scripts/db/001_roles.sql."""
 
+from collections.abc import AsyncIterator
+
 import asyncpg
 import pytest
 
@@ -9,7 +11,7 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture(scope="module", autouse=True)
-async def owner_created_table(postgres: PostgresUrls) -> None:
+async def owner_created_table(postgres: PostgresUrls) -> AsyncIterator[None]:
     """Simulates a migration: the owner creates a table after the script ran."""
     conn = await asyncpg.connect(postgres.owner)
     try:
@@ -21,6 +23,8 @@ async def owner_created_table(postgres: PostgresUrls) -> None:
             )
             """
         )
+        yield
+        await conn.execute("DROP TABLE probe")  # the shared database must match the models
     finally:
         await conn.close()
 

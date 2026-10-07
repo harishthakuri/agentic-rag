@@ -12,11 +12,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from testcontainers.community.postgres import PostgresContainer
 
 PGVECTOR_IMAGE = "pgvector/pgvector:pg16"
 DB_NAME = "simple-rag-db"
-SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts" / "db"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SCRIPTS_DIR = PROJECT_ROOT / "scripts" / "db"
 
 OWNER_PASSWORD = "owner-test-pw"
 APP_PASSWORD = "app-test-pw"
@@ -37,6 +40,15 @@ class PostgresUrls:
     @property
     def app(self) -> str:
         return self.dsn("simple_rag_app", APP_PASSWORD)
+
+    # SQLAlchemy URLs (asyncpg driver), as used in settings.
+    @property
+    def owner_sqlalchemy(self) -> str:
+        return self.owner.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    @property
+    def app_sqlalchemy(self) -> str:
+        return self.app.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 
 def _psql(container: PostgresContainer, *args: str) -> str:
@@ -85,3 +97,13 @@ def postgres() -> Iterator[PostgresUrls]:
             host=container.get_container_host_ip(),
             port=int(container.get_exposed_port(5432)),
         )
+
+
+@pytest.fixture(scope="session")
+def migrated_postgres(postgres: PostgresUrls) -> PostgresUrls:
+    """The container with every Alembic migration applied, as the owner role."""
+    config = Config(str(PROJECT_ROOT / "alembic.ini"))
+    config.attributes["database_url"] = postgres.owner_sqlalchemy
+    config.attributes["configure_logging"] = False
+    command.upgrade(config, "head")
+    return postgres

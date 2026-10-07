@@ -1,6 +1,6 @@
 # Simple RAG: Implementation Plan
 
-> Status: **Draft v1**, to be reviewed before implementation starts.
+> Status: **In progress.** Phases 0–2 are complete.
 > Last updated: 2026-10-07
 
 ---
@@ -463,24 +463,24 @@ STORAGE_DIR=./data/uploads
 Each phase ends with passing tests and **one or more focused git commits**.
 
 ### Phase 0: Foundations
-- [ ] `git init`, `.gitignore`, `README.md` skeleton, this plan
-- [ ] `uv init` (Python 3.13), dependencies, `ruff`/`mypy`/`pytest` config, `pre-commit`
-- [ ] Folder layout per §3.3, `import-linter` contracts for the dependency rule
-- [ ] `core/config.py` (pydantic-settings), `core/logging.py`, FastAPI app factory, `/health/live`
+- [x] `git init`, `.gitignore`, `README.md` skeleton, this plan
+- [x] `uv init` (Python 3.13), dependencies, `ruff`/`mypy`/`pytest` config, `pre-commit`
+- [x] Folder layout per §3.3, `import-linter` contracts for the dependency rule
+- [x] `core/config.py` (pydantic-settings), `core/logging.py`, FastAPI app factory, `/health/live`
 
 ### Phase 1: Database
-- [ ] `scripts/db/001_roles.sql` with run instructions. **You run it**, then fill in `.env`.
-- [ ] Async engine/session factory (`infrastructure/persistence/database.py`), `SqlAlchemyUnitOfWork`
-- [ ] Alembic async setup using `MIGRATIONS_DATABASE_URL`, `version_table_schema='rag'`
-- [ ] Migration 001: `collections`, `documents`, `chunks` (vector + tsvector + indexes), `ingestion_jobs`
-- [ ] testcontainers fixture (`pgvector/pgvector:pg16`) that runs migrations for integration tests
-- [ ] `/health/ready` checks the database
+- [x] `scripts/db/001_roles.sql` with run instructions. **You run it**, then fill in `.env`.
+- [x] Async engine/session factory (`infrastructure/persistence/database.py`), `SqlAlchemyUnitOfWork`
+- [x] Alembic async setup using `MIGRATIONS_DATABASE_URL`, `version_table_schema='rag'`
+- [x] Migration 001: `collections`, `documents`, `chunks` (vector + tsvector + indexes), `ingestion_jobs`
+- [x] testcontainers fixture (`pgvector/pgvector:pg16`) that runs migrations for integration tests
+- [x] `/health/ready` checks the database
 
 ### Phase 2: Collections and documents (CRUD)
-- [ ] Domain entities, value objects and repository interfaces
-- [ ] SQLAlchemy repositories + mappers
-- [ ] Use cases + routers + schemas for collections and document listing/deletion
-- [ ] Problem Details error handling, API-key auth + `rag-admin` CLI
+- [x] Domain entities, value objects and repository interfaces
+- [x] SQLAlchemy repositories + mappers
+- [x] Use cases + routers + schemas for collections and document listing/deletion
+- [x] Problem Details error handling, API-key auth + `rag-admin` CLI
 
 ### Phase 3: Ingestion pipeline
 - [ ] `FileStorage` port + local disk adapter; upload endpoint (`202` + job)
