@@ -133,6 +133,7 @@ simple-rag/
 │   │   │   ├── orm/           # SQLAlchemy entities
 │   │   │   ├── repositories/  # Repository implementations + mappers
 │   │   │   ├── search/        # Hybrid search SQL (RRF)
+│   │   │   ├── database.py    # Engine / session factory (no globals at import time)
 │   │   │   └── unit_of_work.py
 │   │   ├── llm/               # OpenAI-compatible chat + embedding adapters
 │   │   ├── reranking/         # LLM / Noop / (CrossEncoder later)
@@ -151,7 +152,6 @@ simple-rag/
 │   │   └── container.py       # Composition root: wires ports → adapters
 │   ├── core/
 │   │   ├── config.py          # pydantic-settings
-│   │   ├── database.py        # Engine / session factory (no globals at import time)
 │   │   └── logging.py
 │   ├── main.py                # FastAPI app factory
 │   └── worker.py              # Ingestion worker entry point
@@ -470,7 +470,7 @@ Each phase ends with passing tests and **one or more focused git commits**.
 
 ### Phase 1: Database
 - [ ] `scripts/db/001_roles.sql` with run instructions. **You run it**, then fill in `.env`.
-- [ ] Async engine/session factory, `SqlAlchemyUnitOfWork`
+- [ ] Async engine/session factory (`infrastructure/persistence/database.py`), `SqlAlchemyUnitOfWork`
 - [ ] Alembic async setup using `MIGRATIONS_DATABASE_URL`, `version_table_schema='rag'`
 - [ ] Migration 001: `collections`, `documents`, `chunks` (vector + tsvector + indexes), `ingestion_jobs`
 - [ ] testcontainers fixture (`pgvector/pgvector:pg16`) that runs migrations for integration tests
