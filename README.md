@@ -1,169 +1,137 @@
 # Agentic RAG
 
-Retrieval-Augmented Generation with **hybrid search**, **reranking** and **agentic search**, built on **Clean Architecture**.
+[![CI](https://github.com/harishthakuri/agentic-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/harishthakuri/agentic-rag/actions/workflows/ci.yml)
+![Python 3.13](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![PostgreSQL + pgvector](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-- **Stack:** FastAPI · PostgreSQL + pgvector · SQLAlchemy (async) · Alembic · OpenAI SDK (Ollama or OpenAI) · uv
-- **Models (local by default):** `qwen3-embedding:8b` for embeddings and `gpt-oss:20b` for answering and agent reasoning, both through Ollama. You can switch to OpenAI with three environment variables.
+**Ask questions about your documents and get answers that cite their sources.** It combines hybrid search (semantic + keyword), LLM reranking, and an agent that plans its own searches. Every answer is checked for citations, and quality is measured with an evaluation harness rather than judged by eye. It runs fully locally with [Ollama](https://ollama.com), or with any OpenAI-compatible API by changing three settings.
 
-> 🚧 Work in progress. See the [implementation plan](docs/IMPLEMENTATION_PLAN.md) for the design and roadmap.
+Built as a learning project with production habits: Clean Architecture enforced in CI, least-privilege database roles, typed code, about 200 tests, and Docker.
+
+![Agent mode: the model plans two searches, then answers with citations](docs/images/agent-chat.png)
+
+## Highlights
+
+- **Hybrid retrieval in PostgreSQL alone:** pgvector HNSW for meaning, full-text search for exact terms, fused with Reciprocal Rank Fusion. No separate vector database.
+- **LLM reranking:** the chat model grades the top candidates (0–3) for how well they *answer* the question, and falls back safely if it fails.
+- **Two ways to answer:**
+  - `/ask` runs one search, assembles context and streams a cited answer.
+  - `/agent/ask` uses tool calling: the model decides what to search, how often, and when to stop. Every step is streamed and stored for replay.
+- **Grounded by design:** sources are delimited and treated as untrusted, citations are validated, and when nothing relevant is found the LLM isn't called at all.
+- **Ingestion pipeline:** Markdown, text or PDF go through heading-aware chunking, a contextual header on each chunk, and embeddings, run by a background worker on a Postgres job queue (`FOR UPDATE SKIP LOCKED`, leases, retries with backoff).
+- **Measured quality:** 27 labelled questions, recall/MRR/nDCG for retrieval, and an LLM judge for correctness and faithfulness ([results](docs/EVALUATION.md)).
+- **Web UI:** streamed chat with clickable citations, a live agent timeline, and a search lab that compares retrieval strategies side by side.
+
+<table>
+  <tr>
+    <td><img src="docs/images/citation-source.png" alt="Clicking a citation opens the exact source passage" /></td>
+    <td><img src="docs/images/search-lab.png" alt="Search lab: vector, keyword, hybrid and hybrid + rerank side by side" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Every citation opens the exact passage it came from</sub></td>
+    <td align="center"><sub>Search lab: the same query through four retrieval strategies</sub></td>
+  </tr>
+</table>
 
 ## Architecture
 
-```
-presentation  →  bootstrap (composition root)  →  infrastructure  →  application  →  domain
-```
+```mermaid
+flowchart LR
+    subgraph clients[Clients]
+        UI[Web UI]
+        CLI[curl / scripts]
+    end
+    subgraph api[FastAPI app]
+        P[presentation<br/>routers · SSE · auth]
+        B[bootstrap<br/>composition root]
+        A[application<br/>use cases · ports]
+        D[domain<br/>entities · rules]
+        I[infrastructure<br/>adapters]
+    end
+    W[Ingestion worker]
+    PG[(PostgreSQL<br/>pgvector + full-text)]
+    O[[Ollama or OpenAI-compatible API<br/>embeddings · chat · rerank]]
 
-Dependencies point inwards only. `domain` and `application` contain no framework code. The rule is enforced by [import-linter](https://github.com/seddonym/import-linter) (`make arch`).
-
-| Layer                | Responsibility                                                            |
-| -------------------- | ------------------------------------------------------------------------- |
-| `app/domain`         | Entities, value objects, repository interfaces, domain errors             |
-| `app/application`    | Use cases and ports (LLM, embeddings, reranker, unit of work, ...)        |
-| `app/infrastructure` | Adapters: SQLAlchemy/pgvector, OpenAI-compatible clients, parsers, worker |
-| `app/presentation`   | FastAPI routers, request/response schemas, middleware                     |
-| `app/bootstrap`      | Composition root that wires adapters to ports                             |
-
-## Getting started
-
-### Prerequisites
-
-- [uv](https://docs.astral.sh/uv/) and Python 3.13
-- PostgreSQL 16+ with the [pgvector](https://github.com/pgvector/pgvector) extension
-- [Ollama](https://ollama.com) with the models pulled:
-  ```bash
-  ollama pull qwen3-embedding:8b
-  ollama pull gpt-oss:20b
-  ```
-- Docker, for integration tests only
-
-### Setup
-
-```bash
-# 1. Database roles: run once as a PostgreSQL superuser (see instructions in the file)
-psql -h <host> -U postgres -d simple-rag-db -f scripts/db/001_roles.sql
-
-# 2. Configuration
-cp .env.example .env        # fill in the passwords you chose in step 1
-
-# 2.1 Verify the database connection
-uv run python -c "import asyncio; from app.core.config import get_settings; from app.bootstrap.container import Container; c=Container(get_settings()); print(asyncio.run(c.check_readiness().execute()))"
-
-# 3. Dependencies, git hooks and migrations
-make install
-make migrate
-
-# 4. Run
-make run                    # http://localhost:8000/docs
+    UI & CLI -->|API key| P
+    P --> B --> I
+    P --> A
+    I -. implements .-> A
+    A --> D
+    I --> PG
+    I --> O
+    W --> I
 ```
 
-## Web UI
+The layers follow Clean Architecture: **dependencies point inwards**, `domain` and `application` contain no framework code, and every external system sits behind a port (`EmbeddingProvider`, `ChatModel`, `Reranker`, `ChunkSearchIndex`, `UnitOfWork`, …). [import-linter](https://github.com/seddonym/import-linter) enforces this in CI. Swapping Ollama for OpenAI, or the LLM reranker for a cross-encoder, is a configuration change in one place: [`app/bootstrap/container.py`](app/bootstrap/container.py).
 
-Open **http://localhost:8000** (it redirects to `/ui/`) and paste an API key in the sidebar. The UI is a single static page that uses the same public API as any other client:
+| Layer | Responsibility |
+|---|---|
+| [`app/domain`](app/domain) | Entities (`Collection`, `Document`, `Chunk`, `IngestionJob`, `AgentRun`), value objects, repository interfaces, rank fusion |
+| [`app/application`](app/application) | Use cases (ingest, search, ask, agent), ports, versioned prompts |
+| [`app/infrastructure`](app/infrastructure) | SQLAlchemy + pgvector, OpenAI-compatible clients, parsers, chunker, storage, worker queue |
+| [`app/presentation`](app/presentation) | REST API, SSE streaming, auth, RFC 9457 errors, admin CLI, web UI |
+| [`app/bootstrap`](app/bootstrap) | Composition root: wires adapters to ports |
 
-- **Collections and documents:** create collections, upload Markdown, text or PDF files, and watch ingestion progress live.
-- **Chat:** streamed answers in **Ask** mode (one search) or **Agent** mode (the model plans its own searches, shown step by step). Citations `[n]` are clickable and open the exact source passage.
-- **Search lab:** one query through vector, keyword, hybrid and hybrid + rerank, side by side. Hover a result to see where the same passage ranks in the other columns.
+### How a question is answered
 
-There is no build step: plain HTML, CSS and JavaScript, with two vendored libraries (Markdown rendering and HTML sanitising). It is served under a strict Content-Security-Policy, and model output is always sanitised before it is displayed.
-
-## Using the API
-
-Every `/api/v1` route requires an API key. Only its hash is stored, so the key is shown once:
-
-```bash
-make api-key name=dev        # prints arag_...
-export RAG_KEY=arag_...
-
-curl -X POST localhost:8000/api/v1/collections \
-  -H "Authorization: Bearer $RAG_KEY" -H "Content-Type: application/json" \
-  -d '{"name": "kubernetes-docs", "description": "K8s notes"}'
-
-uv run rag-admin api-key list            # list keys
-uv run rag-admin api-key revoke <id>     # revoke a key
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as Client
+    participant S as API
+    participant R as Reranker (LLM)
+    participant L as Chat model
+    U->>S: POST /ask {question, stream: true}
+    S->>S: embed query → vector search (HNSW)
+    S->>S: full-text search → Reciprocal Rank Fusion
+    S->>R: top 10 candidates
+    R-->>S: relevance grades 0–3
+    S-->>U: event: sources (grade-0 chunks dropped, neighbours merged)
+    S->>L: question + numbered, delimited sources
+    L-->>S: answer tokens
+    S-->>U: event: token … token (answer with [n] citations)
+    S->>S: validate citations against the sources
+    S-->>U: event: done (cited, invalid citations, usage, timings)
 ```
 
-### Ingest documents
-
-Uploads return `202 Accepted` immediately. The **worker** parses, chunks and embeds in the background:
-
-```bash
-make worker                                   # in a second terminal
-RAG_API_KEY=arag_... make ingest-samples      # uploads sample_data/ into collection "samples"
-```
-
-Or upload your own (`.md`, `.txt`, `.pdf`):
-
-```bash
-curl -X POST localhost:8000/api/v1/collections/<collection-id>/documents \
-  -H "Authorization: Bearer $RAG_KEY" -F "file=@notes.md"
-# → follow the returned job: GET /api/v1/jobs/<job-id>
-```
-
-### Search
-
-```bash
-curl -X POST localhost:8000/api/v1/collections/<collection-id>/search \
-  -H "Authorization: Bearer $RAG_KEY" -H "Content-Type: application/json" \
-  -d '{"query": "Why does my filtered vector search return fewer rows?", "mode": "hybrid"}'
-```
-
-`mode` is `vector` (semantic), `keyword` (full-text) or `hybrid` (both, fused with Reciprocal Rank Fusion). Each hit shows its rank in both retrievers.
-
-With `RERANKER=llm` (the default), the top candidates are then **reranked** by the chat model, which grades each passage 0–3 for how well it answers the query. This is more precise but takes seconds. Pass `"rerank": false` to skip it. To compare all modes side by side:
-
-```bash
-uv run python scripts/compare_search.py "your question"
-```
-
-### Ask (RAG)
-
-```bash
-curl -N -X POST localhost:8000/api/v1/collections/<collection-id>/ask \
-  -H "Authorization: Bearer $RAG_KEY" -H "Content-Type: application/json" \
-  -d '{"question": "Why does my filtered vector search return fewer rows than the LIMIT?", "stream": true}'
-```
-
-Search (hybrid + rerank) runs once with the question. The chat model then answers **only from the retrieved sources**, citing them as `[n]`. With `"stream": true` you get Server-Sent Events (`sources`, then `token`…, then `done`). Without it, you get a single JSON answer. Every response lists the sources and which ones were cited. If nothing relevant is found, the model is not called at all.
-
-### Agentic search
-
-```bash
-curl -N -X POST localhost:8000/api/v1/collections/<collection-id>/agent/ask \
-  -H "Authorization: Bearer $RAG_KEY" -H "Content-Type: application/json" \
-  -d '{"question": "My cluster is bare-metal: how do users reach my HTTPS API, and how do I stop browsers using stale JavaScript?", "stream": true}'
-```
-
-The model decides **what to search for, how often, and when to stop**. It can split a question into several searches, rephrase, and read around a passage, then answer with citations. The stream shows each step (`tool_call`, `tool_result`) as it happens. Every run is stored and can be replayed with `GET /api/v1/agent/runs/<run-id>`.
-
-Errors use [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`).
+In **agent mode**, the chat model receives tools instead (`search_knowledge_base`, `read_more_context`, `list_documents`) and loops: call a tool, read the result, decide what to do next. Guards bound the loop: a tool-call limit, a prompt-size limit, a wall-clock timeout, and errors returned to the model as text so it can correct itself.
 
 ## Evaluation
 
-A labelled question set measures retrieval (recall, MRR, nDCG) and answer quality (correctness, faithfulness and citations, graded by an LLM judge). [Method, results and their interpretation](docs/EVALUATION.md).
+A labelled question set is run against the real system ([method and full results](docs/EVALUATION.md)):
 
 | System | Correctness | Faithfulness | Answers with citations | Declined unanswerable | p50 latency |
 |---|---|---|---|---|---|
 | `/ask` (hybrid + LLM rerank) | 1.00 | 0.97 | 79% | 3/3 | 7.6 s |
 | `/agent/ask` | 1.00 | 0.95 | 88% | 3/3 | 6.3 s |
 
-The main findings: the sample corpus is too easy to separate the retrieval strategies, and the remaining weakness is citation discipline, not retrieval. Building the evaluation also caught three bugs, two of them in production code.
+<sub>Local run: `qwen3-embedding:8b`, `gpt-oss:20b` (also the judge), M1 Max.</sub>
+
+What the numbers say:
+
+- **The sample corpus is too easy to separate retrieval strategies:** plain vector search already scores 1.00 recall.
+- **The remaining weakness is citation discipline:** some answers cite nothing, even though every citation that does appear is correct.
+- **The evaluation caught three bugs before it produced trustworthy numbers,** two of them in production code.
+
+## Quickstart
+
+### With Docker
+
+Requires Docker and [Ollama](https://ollama.com) on the host with the models pulled:
 
 ```bash
-make eval-retrieval    # ~3 min
-make eval              # ~30 min locally (about 250 LLM calls)
-```
+ollama pull qwen3-embedding:8b && ollama pull gpt-oss:20b
 
-## Run with Docker
-
-The image runs in three roles: API, ingestion worker and migrations. `docker compose` adds PostgreSQL + pgvector, provisioned with the same least-privilege roles as production:
-
-```bash
-docker compose up -d --build                         # or: make up
+docker compose up -d --build            # Postgres + pgvector, migrations, API, worker
 docker compose exec api rag-admin api-key create --name dev
-open http://localhost:8000
+open http://localhost:8000              # paste the key into the sidebar
 ```
 
-Ollama stays on the host (Docker on macOS can't use the Apple GPU). Set `OLLAMA_URL` for your Docker runtime:
+Then upload Markdown, text or PDF files in the UI, or load the sample documents with `RAG_API_KEY=arag_... make ingest-samples`.
+
+Ollama runs on the host (Docker on macOS can't use the Apple GPU). Point the containers at it with `OLLAMA_URL`:
 
 | Runtime | `OLLAMA_URL` |
 |---|---|
@@ -171,47 +139,125 @@ Ollama stays on the host (Docker on macOS can't use the Apple GPU). Set `OLLAMA_
 | Rancher Desktop | `http://host.lima.internal:11434` |
 | Linux | default, with Ollama started using `OLLAMA_HOST=0.0.0.0` |
 
-The image is about 80 MB on a slim Python base. It runs as a non-root user, with the tokenizer data downloaded at build time and JSON logs. Database passwords in `docker-compose.yml` are local development defaults; override them through environment variables.
+The image is about 80 MB on a slim Python base. It runs as a non-root user and plays three roles: API, worker (`rag-worker`) and migrations (`alembic upgrade head`).
+
+### Local development
+
+Requires [uv](https://docs.astral.sh/uv/), PostgreSQL 16+ with [pgvector](https://github.com/pgvector/pgvector), and Ollama.
+
+```bash
+# 1. Least-privilege database roles: run once as a superuser (instructions in the file)
+psql -h <db-host> -U postgres -d simple-rag-db -f scripts/db/001_roles.sql
+
+# 2. Configure, install, migrate
+cp .env.example .env          # fill in the role passwords from step 1
+make install                  # dependencies + git hooks
+make migrate
+
+# 3. Run (two terminals)
+make run                      # API + UI at http://localhost:8000
+make worker                   # ingestion worker
+
+make api-key name=dev         # create an API key (shown once)
+```
+
+To use OpenAI instead of Ollama, set `LLM_BASE_URL`, `LLM_API_KEY` and `LLM_MODEL` in `.env`. Embeddings are configured separately (`EMBEDDING_*`).
+
+## Using the API
+
+Interactive docs are at `/docs`. Every `/api/v1` route needs `Authorization: Bearer <api key>`. Errors use [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457).
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/collections` · `GET` · `DELETE /{id}` | Manage collections (named sets of documents, bound to one embedding model) |
+| `POST /api/v1/collections/{id}/documents` | Upload a file → `202 Accepted` + an ingestion job |
+| `GET /api/v1/jobs/{id}` · `GET /api/v1/documents/{id}` | Ingestion progress |
+| `POST /api/v1/collections/{id}/search` | Retrieval only: `mode` = `vector` / `keyword` / `hybrid`, optional `rerank` |
+| `POST /api/v1/collections/{id}/ask` | One-shot RAG answer with citations (`"stream": true` for SSE) |
+| `POST /api/v1/collections/{id}/agent/ask` | Agentic search (`"stream": true` for SSE) |
+| `GET /api/v1/agent/runs/{id}` | Replay an agent run step by step |
+| `GET /health/live` · `GET /health/ready` | Liveness; readiness of the database and both models |
+
+```bash
+curl -N -X POST localhost:8000/api/v1/collections/$COLLECTION/agent/ask \
+  -H "Authorization: Bearer $RAG_KEY" -H "Content-Type: application/json" \
+  -d '{"question": "Compare HNSW and IVFFlat: how is each built?", "stream": true}'
+```
+
+### Authentication
+
+API keys are random 256-bit secrets, shown once at creation (`make api-key name=dev`). The database stores only their SHA-256 hash, so a copy of the database doesn't expose usable keys. Give each client its own key, so you can revoke one (`uv run rag-admin api-key revoke <id>`) without affecting the others.
+
+## Design decisions and lessons learned
+
+The full reasoning is in the [implementation plan](docs/IMPLEMENTATION_PLAN.md). The highlights:
+
+| Decision | Why |
+|---|---|
+| **pgvector instead of a separate vector database** | One system for data, vectors and full-text search, with transactional consistency |
+| **Embeddings truncated from 4096 to 1024 dimensions** | pgvector's HNSW index supports at most 2,000 dimensions; Matryoshka-trained models keep most of their quality when shortened |
+| **Asymmetric embeddings** | Qwen3-Embedding expects an instruction on queries but not on documents, so the port has separate `embed_query` and `embed_documents` |
+| **OR semantics for keyword search** | `websearch_to_tsquery` requires *every* word, so natural questions matched nothing; questions now match any stemmed term and are ranked by `ts_rank_cd` |
+| **Contextual chunk headers** | Each chunk is embedded with its document title and section path, so a passage like "it defaults to port 80" keeps its meaning |
+| **Hand-written agent loop, not a framework** | Every step is visible, testable and bounded; frameworks tend to blur architectural boundaries |
+| **Least-privilege database roles** | The API can't run DDL; only migrations use the schema-owner role |
+
+Testing against the real models taught more than the unit tests did:
+
+- **JSON schemas must say exactly what you want.** With a generic schema, `gpt-oss` returned `{"grades": []}` every time. Requiring *exactly n* items fixed it.
+- **Put instructions where the model is looking.** A citation rule only in the system prompt was ignored by the agent; repeating it in every tool result worked. "One topic per query" in the *tool description* made the agent split multi-part questions.
+- **Models have habits.** `gpt-oss` cites as `【1】` (normalised to `[1]`), attaches citations to words (`mode[1]`), and writes `couldn’t` with a curly apostrophe. Each of these broke a check until it was handled.
+- **Never trust an evaluation you haven't audited.** The first evaluation run looked plausible but hid three bugs.
+
+## Tech stack
+
+| Area | Choice |
+|---|---|
+| API | FastAPI, Pydantic, Server-Sent Events |
+| Database | PostgreSQL 16, pgvector (HNSW), full-text search (GIN), SQLAlchemy 2 (async), Alembic |
+| Models | Ollama: `qwen3-embedding:8b` (1024 dims) and `gpt-oss:20b`, through the OpenAI SDK, so any OpenAI-compatible API works |
+| Ingestion | Heading-aware Markdown parser, pypdf, tiktoken, Postgres job queue |
+| UI | Plain HTML/CSS/JS (no build step), marked + DOMPurify, strict CSP |
+| Quality | pytest (unit, e2e, integration with testcontainers), mypy (strict), ruff, import-linter, pre-commit, GitHub Actions |
+| Packaging | uv, multi-stage Docker image, docker compose |
+
+## Project structure
+
+```
+app/
+├── domain/            # entities, value objects, repository interfaces, rank fusion
+├── application/       # use cases (ingestion, retrieval, answering, agent), ports, prompts
+├── infrastructure/    # persistence, search SQL, LLM clients, reranker, parsers, chunker, storage
+├── presentation/      # REST API, SSE, CLI (rag-admin), web UI
+├── bootstrap/         # composition root
+├── main.py            # FastAPI app factory
+└── worker.py          # ingestion worker (rag-worker)
+alembic/               # migrations
+evals/                 # evaluation harness and labelled dataset
+scripts/               # DB role script, sample ingestion, search comparison
+sample_data/           # small demo corpus
+tests/                 # unit · e2e · integration (pgvector in Docker) · live (opt-in)
+docs/                  # implementation plan, evaluation, screenshots
+```
 
 ## Development
 
 ```bash
-make check             # lint + typecheck + architecture contracts + tests
-make test-integration  # tests against a real pgvector container
+make check             # ruff + mypy + architecture contracts + unit/e2e tests
+make test-integration  # integration tests against pgvector in Docker
 uv run pytest -m live  # opt-in checks against your local Ollama models
-make help              # list all commands
+make eval-retrieval    # retrieval evaluation (~3 min)
+make eval              # full evaluation with LLM judge (~30 min locally)
+make help              # all commands
 ```
 
-## What the API key is
+## Roadmap
 
-It's a password for programs instead of people. Any client calling `/api/v1/...` (Swagger, curl, a script, later a UI) has to send it in a header:
+- **A harder evaluation corpus**, with overlapping topics, so hybrid search and reranking can be properly measured
+- **A cross-encoder reranker:** the same precision for about 0.2 s instead of about 5 s?
+- **Citation enforcement:** structured answers or a retry, measured by the evaluation
+- **An independent, stronger judge model** for the evaluation
 
-```
-Authorization: Bearer arag_xxxxxxxx...
-```
+## License
 
-Without a valid key, the API returns **401 Unauthorized**. Clicking **Authorize** in Swagger just makes Swagger add that header to every request for you.
-
-How it works:
-
-1. `make api-key name=dev` generates a random secret, like a 43-character password, and prints it **once**.
-2. The database stores only a **SHA-256 hash** of it, never the key itself. If someone stole a copy of the database, they still couldn't use your key.
-3. On each request, the API hashes the key you sent and looks up the hash. A match on a key that isn't revoked lets the request through.
-4. `/health/live` and `/health/ready` don't need a key.
-
-| Command                                                     | What it does                                |
-| ----------------------------------------------------------- | ------------------------------------------- |
-| `make api-key name=dev`                                     | Create a key                                |
-| `uv run rag-admin api-key list`        | List keys (name, prefix, last used, status) |
-| `uv run rag-admin api-key revoke <id>` | Revoke a key, e.g. if it leaked             |
-
-Give each client its own key: one for you, one for a script, and so on. Then you can revoke one without breaking the others.
-
-## What to try now in Swagger ([http://localhost:8000/docs](http://localhost:8000/docs))
-
-1. **`POST /api/v1/collections`** with `{"name": "kubernetes-docs", "description": "my notes"}`. A collection is a named bucket of documents that you search together. The response shows it's bound to `qwen3-embedding:8b` at 1024 dims.
-2. **`GET /api/v1/collections`** to list it.
-3. **`POST`** the same name again. You get **409 Conflict** in the standard error format.
-4. **`GET /api/v1/collections/{id}/documents`** returns an empty list, because there's no way to upload documents yet.
-
-Right now you can manage collections, but there's nothing to search. The actual RAG part starts in Phase 3.
+[MIT](LICENSE)

@@ -1,6 +1,6 @@
 # Agentic RAG: Implementation Plan
 
-> Status: **In progress.** Phases 0–8 are complete. See [EVALUATION.md](EVALUATION.md) for results.
+> Status: **v1 complete.** Phases 0–8 are done, plus a web UI, Docker and CI. See [EVALUATION.md](EVALUATION.md) for results.
 > Last updated: 2026-10-07
 
 ---
@@ -550,7 +550,7 @@ Each phase ends with passing tests and **one or more focused git commits**.
 - [x] Dockerfile + `docker-compose.yml` for the app and worker
 - [x] GitHub Actions CI: ruff, mypy, import-linter, unit + integration tests
 - [ ] ADRs in `docs/adr/` for the key decisions in this plan
-- [ ] README with architecture diagram, quickstart and eval results
+- [x] README with architecture diagram, quickstart and eval results
 
 ---
 
