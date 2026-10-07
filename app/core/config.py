@@ -92,6 +92,14 @@ class Settings(BaseSettings):
     answer_context_tokens: int = Field(default=3000, ge=200)  # budget for sources in the prompt
     answer_min_rerank_grade: int = Field(default=1, ge=0, le=3)  # drop reranked chunks below
 
+    # --- Agent (/agent/ask) ------------------------------------------------
+    agent_max_tool_calls: int = Field(default=6, ge=1, le=12)
+    agent_max_prompt_tokens: int = Field(default=24_000, ge=2000)  # then: answer, no more tools
+    agent_timeout_seconds: float = Field(default=180.0, gt=0)
+    agent_search_top_k: int = Field(default=5, ge=1, le=20)  # passages per search
+    # The agent judges relevance itself; reranking each of its searches costs seconds.
+    agent_rerank: bool = False
+
     # --- Storage -----------------------------------------------------------
     storage_dir: Path = Path("./data/uploads")
 

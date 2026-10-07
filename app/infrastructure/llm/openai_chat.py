@@ -10,7 +10,7 @@ from typing import Any, cast
 
 import openai
 from openai import AsyncOpenAI, omit
-from openai.types.chat import ChatCompletionMessageParam
+from openai.types.chat import ChatCompletionFunctionToolParam, ChatCompletionMessageParam
 
 from app.application.ports.chat import (
     ChatMessage,
@@ -19,6 +19,8 @@ from app.application.ports.chat import (
     CompletionDone,
     TextDelta,
     TokenUsage,
+    ToolCall,
+    ToolSpec,
 )
 
 
@@ -40,16 +42,16 @@ class OpenAICompatibleChatModel:
     def model(self) -> str:
         return self._model
 
-    async def stream(self, messages: Sequence[ChatMessage]) -> AsyncIterator[ChatStreamEvent]:
-        payload = cast(
-            "list[ChatCompletionMessageParam]",
-            [{"role": m.role, "content": m.content} for m in messages],
-        )
+    async def stream(
+        self, messages: Sequence[ChatMessage], tools: Sequence[ToolSpec] = ()
+    ) -> AsyncIterator[ChatStreamEvent]:
         usage: TokenUsage | None = None
+        calls: dict[int, _PartialToolCall] = {}
         try:
             stream = await self._client.chat.completions.create(
                 model=self._model,
-                messages=payload,
+                messages=[_to_openai(m) for m in messages],
+                tools=[_tool(t) for t in tools] if tools else omit,
                 temperature=self._temperature,
                 stream=True,
                 stream_options={"include_usage": True},
@@ -67,6 +69,63 @@ class OpenAICompatibleChatModel:
                 for choice in chunk.choices:
                     if choice.delta.content:
                         yield TextDelta(choice.delta.content)
+                    # Tool calls may arrive whole (Ollama) or in fragments (OpenAI),
+                    # keyed by index: accumulate either way.
+                    for fragment in choice.delta.tool_calls or ():
+                        partial = calls.setdefault(fragment.index, _PartialToolCall())
+                        partial.add(fragment.id, fragment.function)
         except openai.APIError as exc:
             raise ChatModelError(f"chat model request failed: {exc}") from exc
-        yield CompletionDone(usage=usage)
+        tool_calls = tuple(calls[i].finish(i) for i in sorted(calls))
+        yield CompletionDone(usage=usage, tool_calls=tool_calls)
+
+
+class _PartialToolCall:
+    def __init__(self) -> None:
+        self.id = ""
+        self.name = ""
+        self.arguments = ""
+
+    def add(self, call_id: str | None, function: Any) -> None:
+        if call_id:
+            self.id = call_id
+        if function is not None:
+            self.name += function.name or ""
+            self.arguments += function.arguments or ""
+
+    def finish(self, index: int) -> ToolCall:
+        return ToolCall(id=self.id or f"call_{index}", name=self.name, arguments=self.arguments)
+
+
+def _to_openai(message: ChatMessage) -> ChatCompletionMessageParam:
+    if message.role == "tool":
+        return {
+            "role": "tool",
+            "tool_call_id": message.tool_call_id or "",
+            "content": message.content,
+        }
+    if message.role == "assistant" and message.tool_calls:
+        return {
+            "role": "assistant",
+            "content": message.content or None,
+            "tool_calls": [
+                {
+                    "id": call.id,
+                    "type": "function",
+                    "function": {"name": call.name, "arguments": call.arguments},
+                }
+                for call in message.tool_calls
+            ],
+        }
+    return cast("ChatCompletionMessageParam", {"role": message.role, "content": message.content})
+
+
+def _tool(spec: ToolSpec) -> ChatCompletionFunctionToolParam:
+    return {
+        "type": "function",
+        "function": {
+            "name": spec.name,
+            "description": spec.description,
+            "parameters": spec.parameters,
+        },
+    }

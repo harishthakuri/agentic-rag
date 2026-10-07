@@ -1,6 +1,6 @@
 # Simple RAG: Implementation Plan
 
-> Status: **In progress.** Phases 0–6 are complete.
+> Status: **In progress.** Phases 0–7 are complete.
 > Last updated: 2026-10-07
 
 ---
@@ -297,6 +297,16 @@ event: citations   data: [...]
 event: done        data: {"steps":3,"latency_ms":4210,"usage":{...}}
 ```
 
+**As implemented, and what we learned:**
+
+- **Tools:** `search_knowledge_base` (hybrid search, no rerank by default, since the agent judges relevance itself), `read_more_context`, and `list_documents`. Every passage the agent sees gets a run-wide source number, so citations work exactly as in `/ask`.
+- **Guards:** a tool-call limit, after which tools are withdrawn and the model is told to answer. The same happens when the prompt grows past a size estimate. There is also a wall-clock timeout. Bad arguments, unknown tools and repeated searches are returned to the model as text instead of failing the run.
+- **Citations:** with the citation rule only in the system prompt, `gpt-oss` answered *without any citations*. Repeating a one-line reminder at the end of every tool result fixed it (prompt `agent-v2`). Rules belong where the model is looking.
+- **Query decomposition:** asked in the system prompt to "search each part separately", the model still sent one long combined query. The same guidance in the *tool description* ("one topic per query") made it split a two-topic question into two focused searches.
+- **Faithfulness is not solved by prompting alone:** the agent occasionally adds unsupported details from its own knowledge (e.g. "Layer 2 or BGP mode" for MetalLB). Measuring this is the job of the evaluation harness (§7).
+- **Ollama context window:** it is a server setting and can't be set through the OpenAI API. If it were small, Ollama would silently drop the start of the prompt. Measured here: 128k for `gpt-oss:20b`, loaded through the desktop app.
+- **Latency (local):** about 9–19 s for 1–2 searches plus the answer.
+
 **Model note:** `gpt-oss:20b` supports native tool calling and adjustable reasoning effort. Ollama exposes both through the OpenAI-compatible Chat Completions API, so the same adapter works for OpenAI models.
 
 **Security note:** retrieved document text is **untrusted input** and could contain prompt injection. Mitigations: all tools are read-only, retrieved content is wrapped in clearly delimited blocks, and the system prompt tells the model to treat it as data, not instructions.
@@ -524,10 +534,10 @@ Each phase ends with passing tests and **one or more focused git commits**.
 - [x] Answer prompt with `[n]` citations, citation validation, SSE + JSON responses
 
 ### Phase 7: Agentic search (`/agent/ask`)
-- [ ] Tool schema definitions + handlers (`search_knowledge_base`, `read_chunk_context`, `list_documents`)
-- [ ] Agent loop with guards (max steps, token budget, timeout)
-- [ ] `agent_runs` / `agent_steps` migration + persistence; `/agent/runs/{id}`
-- [ ] SSE streaming of steps and tokens; e2e test with a scripted fake `ChatModel`
+- [x] Tool schema definitions + handlers (`search_knowledge_base`, `read_chunk_context`, `list_documents`)
+- [x] Agent loop with guards (max steps, token budget, timeout)
+- [x] `agent_runs` / `agent_steps` migration + persistence; `/agent/runs/{id}`
+- [x] SSE streaming of steps and tokens; e2e test with a scripted fake `ChatModel`
 
 ### Phase 8: Evaluation harness
 - [ ] Dataset format + LLM-assisted question generation + manual review

@@ -115,6 +115,16 @@ curl -N -X POST localhost:8000/api/v1/collections/<collection-id>/ask \
 
 Search (hybrid + rerank) runs once with the question. The chat model then answers **only from the retrieved sources**, citing them as `[n]`. With `"stream": true` you get Server-Sent Events (`sources`, then `token`…, then `done`). Without it, you get a single JSON answer. Every response lists the sources and which ones were cited. If nothing relevant is found, the model is not called at all.
 
+### Agentic search
+
+```bash
+curl -N -X POST localhost:8000/api/v1/collections/<collection-id>/agent/ask \
+  -H "Authorization: Bearer $RAG_KEY" -H "Content-Type: application/json" \
+  -d '{"question": "My cluster is bare-metal: how do users reach my HTTPS API, and how do I stop browsers using stale JavaScript?", "stream": true}'
+```
+
+The model decides **what to search for, how often, and when to stop**. It can split a question into several searches, rephrase, and read around a passage, then answer with citations. The stream shows each step (`tool_call`, `tool_result`) as it happens. Every run is stored and can be replayed with `GET /api/v1/agent/runs/<run-id>`.
+
 Errors use [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`).
 
 ## Development

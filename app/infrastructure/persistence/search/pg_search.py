@@ -50,6 +50,18 @@ _ANY_TERMS = text(
         " AS tsquery)"
     )
 )
+_NEIGHBOURS_SQL = text("""
+    SELECT c.id, c.document_id, d.title, c.ordinal, c.text, c.heading_path, c.page,
+           0.0 AS score
+    FROM rag.chunks AS target
+    JOIN rag.chunks AS c
+      ON c.document_id = target.document_id
+     AND c.ordinal BETWEEN target.ordinal - :before AND target.ordinal + :after
+    JOIN rag.documents AS d ON d.id = c.document_id
+    WHERE target.id = :chunk_id AND target.collection_id = :collection_id
+    ORDER BY c.ordinal
+""")
+
 # Users who type search syntax get exactly what they asked for.
 _WEBSEARCH = text(_KEYWORD_SQL.format(tsquery="websearch_to_tsquery('english', :query)"))
 
@@ -87,6 +99,20 @@ class PgChunkSearchIndex:
         statement = _WEBSEARCH if _WEBSEARCH_SYNTAX.search(query) else _ANY_TERMS
         rows = await self._session.execute(
             statement, {"query": query, "collection_id": collection_id, "limit": limit}
+        )
+        return [_to_match(row) for row in rows]
+
+    async def neighbours(
+        self, collection_id: UUID, chunk_id: UUID, before: int, after: int
+    ) -> list[ChunkMatch]:
+        rows = await self._session.execute(
+            _NEIGHBOURS_SQL,
+            {
+                "collection_id": collection_id,
+                "chunk_id": chunk_id,
+                "before": before,
+                "after": after,
+            },
         )
         return [_to_match(row) for row in rows]
 

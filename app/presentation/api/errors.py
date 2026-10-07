@@ -17,6 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.application.ports.chat import ChatModelError
 from app.application.ports.embeddings import EmbeddingUnavailableError
+from app.application.use_cases.agent import AgentTimeoutError
 from app.domain.exceptions import (
     AuthenticationError,
     ConflictError,
@@ -104,6 +105,10 @@ async def _dependency_unavailable(request: Request, exc: Exception) -> JSONRespo
     )
 
 
+async def _agent_timeout(request: Request, exc: Exception) -> JSONResponse:
+    return problem_response(request, HTTPStatus.GATEWAY_TIMEOUT, str(exc))
+
+
 async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
     # Details stay in the logs; clients get a generic message.
     logger.error("request.unhandled_error", error_type=type(exc).__name__)
@@ -116,4 +121,5 @@ def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(StarletteHTTPException, _http_exception)
     app.add_exception_handler(ChatModelError, _dependency_unavailable)
     app.add_exception_handler(EmbeddingUnavailableError, _dependency_unavailable)
+    app.add_exception_handler(AgentTimeoutError, _agent_timeout)
     app.add_exception_handler(Exception, _unhandled)

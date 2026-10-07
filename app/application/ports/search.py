@@ -32,3 +32,10 @@ class ChunkSearchIndex(Protocol):
     async def keyword_search(self, collection_id: UUID, query: str, limit: int) -> list[ChunkMatch]:
         """Chunks sharing (stemmed) words with the query, ranked by full-text relevance."""
         ...
+
+    async def neighbours(
+        self, collection_id: UUID, chunk_id: UUID, before: int, after: int
+    ) -> list[ChunkMatch]:
+        """The chunk and up to `before`/`after` adjacent chunks of the same document,
+        in document order (score 0). Empty if the chunk is not in the collection."""
+        ...

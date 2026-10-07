@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.application.use_cases.agent import AgentAsk, GetAgentRun
 from app.application.use_cases.answering import AskQuestion
 from app.application.use_cases.collections import (
     CreateCollection,
@@ -77,3 +78,5 @@ SearchCollectionDep = Annotated[
     SearchCollection, Depends(_use_case(lambda c: c.search_collection()))
 ]
 AskQuestionDep = Annotated[AskQuestion, Depends(_use_case(lambda c: c.ask_question()))]
+AgentAskDep = Annotated[AgentAsk, Depends(_use_case(lambda c: c.agent_ask()))]
+GetAgentRunDep = Annotated[GetAgentRun, Depends(_use_case(lambda c: c.get_agent_run()))]

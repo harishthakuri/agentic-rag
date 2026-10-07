@@ -17,6 +17,8 @@ from app.application.ports.chat import (
     CompletionDone,
     TextDelta,
     TokenUsage,
+    ToolCall,
+    ToolSpec,
 )
 from app.application.ports.embeddings import EmbeddingUnavailableError
 from app.application.ports.reranking import RerankCandidate, RerankError
@@ -259,3 +261,49 @@ async def test_chat_errors_become_chat_model_error() -> None:
     model = _chat_model(httpx.MockTransport(lambda request: httpx.Response(503)))
     with pytest.raises(ChatModelError):
         [e async for e in model.stream([ChatMessage("user", "hi")])]
+
+
+async def test_chat_accumulates_fragmented_tool_calls_and_sends_tool_messages() -> None:
+    requests: list[dict[str, Any]] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        # OpenAI streams a tool call in fragments; Ollama sends it whole. Both must work.
+        body = _sse_chunks(
+            {
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "search_knowledge_base", "arguments": ""},
+                    }
+                ]
+            },
+            {"tool_calls": [{"index": 0, "function": {"arguments": '{"query": '}}]},
+            {"tool_calls": [{"index": 0, "function": {"arguments": '"HNSW"}'}}]},
+        )
+        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+
+    model = _chat_model(httpx.MockTransport(handle))
+    spec = ToolSpec("search_knowledge_base", "Search.", {"type": "object", "properties": {}})
+    history = [
+        ChatMessage("user", "Compare indexes"),
+        ChatMessage("assistant", "", tool_calls=(ToolCall("call_0", "list_documents", "{}"),)),
+        ChatMessage("tool", "2 documents", tool_call_id="call_0"),
+    ]
+
+    events = [e async for e in model.stream(history, [spec])]
+
+    done = events[-1]
+    assert isinstance(done, CompletionDone)
+    assert done.tool_calls == (ToolCall("call_1", "search_knowledge_base", '{"query": "HNSW"}'),)
+    sent = requests[0]
+    assert sent["tools"][0]["function"]["name"] == "search_knowledge_base"
+    assert sent["messages"][1]["tool_calls"][0]["id"] == "call_0"
+    assert sent["messages"][1]["content"] is None
+    assert sent["messages"][2] == {
+        "role": "tool",
+        "tool_call_id": "call_0",
+        "content": "2 documents",
+    }

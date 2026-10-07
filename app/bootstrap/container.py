@@ -12,6 +12,7 @@ from openai import AsyncOpenAI
 
 from app.application.ports.reranking import Reranker
 from app.application.ports.unit_of_work import UnitOfWork
+from app.application.use_cases.agent import AgentAsk, GetAgentRun
 from app.application.use_cases.answering import AskQuestion, ContextBuilder
 from app.application.use_cases.api_keys import (
     AuthenticateApiKey,
@@ -190,6 +191,23 @@ class Container:
                 min_rerank_score=self.settings.answer_min_rerank_grade,
             ),
         )
+
+    # --- Agent -------------------------------------------------------------
+    def agent_ask(self) -> AgentAsk:
+        settings = self.settings
+        return AgentAsk(
+            self.unit_of_work,
+            self.search_collection(),
+            self.chat_model,
+            max_tool_calls=settings.agent_max_tool_calls,
+            max_prompt_tokens=settings.agent_max_prompt_tokens,
+            timeout_seconds=settings.agent_timeout_seconds,
+            search_top_k=settings.agent_search_top_k,
+            rerank=settings.agent_rerank and self.reranker is not None,
+        )
+
+    def get_agent_run(self) -> GetAgentRun:
+        return GetAgentRun(self.unit_of_work)
 
     # --- API keys ----------------------------------------------------------
     def authenticate_api_key(self) -> AuthenticateApiKey:

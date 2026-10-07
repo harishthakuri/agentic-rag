@@ -11,6 +11,7 @@ from typing import Self
 
 from app.application.ports.search import ChunkSearchIndex
 from app.domain.repositories import (
+    AgentRunRepository,
     ApiKeyRepository,
     ChunkRepository,
     CollectionRepository,
@@ -25,6 +26,7 @@ class UnitOfWork(ABC):
     chunks: ChunkRepository
     ingestion_jobs: IngestionJobRepository
     api_keys: ApiKeyRepository
+    agent_runs: AgentRunRepository
     search: ChunkSearchIndex  # read-only queries over chunks
 
     async def __aenter__(self) -> Self:

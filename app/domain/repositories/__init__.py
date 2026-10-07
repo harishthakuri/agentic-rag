@@ -8,7 +8,15 @@ from collections.abc import Sequence
 from datetime import timedelta
 from uuid import UUID
 
-from app.domain.models import ApiKey, Chunk, Collection, Document, IngestionJob
+from app.domain.models import (
+    AgentRun,
+    AgentStep,
+    ApiKey,
+    Chunk,
+    Collection,
+    Document,
+    IngestionJob,
+)
 from app.domain.value_objects import CollectionName, ContentHash
 
 
@@ -82,6 +90,24 @@ class IngestionJobRepository(ABC):
         The returned job is RUNNING, locked by `worker_id`, with `attempts` incremented."""
 
 
+class AgentRunRepository(ABC):
+    @abstractmethod
+    async def add(self, run: AgentRun) -> None: ...
+
+    @abstractmethod
+    async def update(self, run: AgentRun) -> None: ...
+
+    @abstractmethod
+    async def get(self, run_id: UUID) -> AgentRun | None: ...
+
+    @abstractmethod
+    async def add_step(self, step: AgentStep) -> None: ...
+
+    @abstractmethod
+    async def steps(self, run_id: UUID) -> list[AgentStep]:
+        """The run's steps, in order."""
+
+
 class ApiKeyRepository(ABC):
     @abstractmethod
     async def add(self, api_key: ApiKey) -> None: ...
@@ -100,6 +126,7 @@ class ApiKeyRepository(ABC):
 
 
 __all__ = [
+    "AgentRunRepository",
     "ApiKeyRepository",
     "ChunkRepository",
     "CollectionRepository",

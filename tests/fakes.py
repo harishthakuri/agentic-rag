@@ -19,6 +19,8 @@ from app.application.ports.chat import (
     CompletionDone,
     TextDelta,
     TokenUsage,
+    ToolCall,
+    ToolSpec,
 )
 from app.application.ports.embeddings import EmbeddingUnavailableError
 from app.application.ports.reranking import RerankCandidate, RerankError, RerankScore
@@ -26,8 +28,18 @@ from app.application.ports.search import ChunkMatch
 from app.application.ports.unit_of_work import UnitOfWork
 from app.application.use_cases.collections import CollectionAlreadyExistsError
 from app.application.use_cases.documents import DuplicateDocumentError
-from app.domain.models import ApiKey, Chunk, Collection, Document, IngestionJob, JobStatus
+from app.domain.models import (
+    AgentRun,
+    AgentStep,
+    ApiKey,
+    Chunk,
+    Collection,
+    Document,
+    IngestionJob,
+    JobStatus,
+)
 from app.domain.repositories import (
+    AgentRunRepository,
     ApiKeyRepository,
     ChunkRepository,
     CollectionRepository,
@@ -161,6 +173,27 @@ class InMemoryIngestionJobRepository(IngestionJobRepository):
         return job
 
 
+class InMemoryAgentRunRepository(AgentRunRepository):
+    def __init__(self, runs: dict[UUID, AgentRun], steps: dict[UUID, list[AgentStep]]) -> None:
+        self.runs = runs
+        self.step_rows = steps
+
+    async def add(self, run: AgentRun) -> None:
+        self.runs[run.id] = run
+
+    async def update(self, run: AgentRun) -> None:
+        self.runs[run.id] = run
+
+    async def get(self, run_id: UUID) -> AgentRun | None:
+        return self.runs.get(run_id)
+
+    async def add_step(self, step: AgentStep) -> None:
+        self.step_rows.setdefault(step.run_id, []).append(step)
+
+    async def steps(self, run_id: UUID) -> list[AgentStep]:
+        return sorted(self.step_rows.get(run_id, []), key=lambda s: s.number)
+
+
 class InMemoryChunkSearchIndex:
     """Naive versions of the two retrievers: exact cosine similarity, and the number
     of shared lowercase words standing in for full-text ranking."""
@@ -209,6 +242,20 @@ class InMemoryChunkSearchIndex:
         scored.sort(key=lambda pair: -pair[0])
         return [self._match(c, float(s)) for s, c in scored[:limit]]
 
+    async def neighbours(
+        self, collection_id: UUID, chunk_id: UUID, before: int, after: int
+    ) -> list[ChunkMatch]:
+        chunks = self._chunks(collection_id)
+        target = next((c for c in chunks if c.id == chunk_id), None)
+        if target is None:
+            return []
+        lo, hi = target.ordinal - before, target.ordinal + after
+        return [
+            self._match(c, 0.0)
+            for c in sorted(chunks, key=lambda c: c.ordinal)
+            if c.document_id == target.document_id and lo <= c.ordinal <= hi
+        ]
+
 
 class InMemoryStore:
     """The 'database': committed state shared by every unit of work."""
@@ -219,10 +266,20 @@ class InMemoryStore:
         self.chunks: dict[UUID, list[Chunk]] = {}
         self.ingestion_jobs: dict[UUID, IngestionJob] = {}
         self.api_keys: dict[UUID, ApiKey] = {}
+        self.agent_runs: dict[UUID, AgentRun] = {}
+        self.agent_steps: dict[UUID, list[AgentStep]] = {}
         self.commits = 0
 
 
-_TABLES = ("collections", "documents", "chunks", "ingestion_jobs", "api_keys")
+_TABLES = (
+    "collections",
+    "documents",
+    "chunks",
+    "ingestion_jobs",
+    "api_keys",
+    "agent_runs",
+    "agent_steps",
+)
 
 
 class InMemoryUnitOfWork(UnitOfWork):
@@ -238,6 +295,9 @@ class InMemoryUnitOfWork(UnitOfWork):
         self.chunks = InMemoryChunkRepository(self._tables["chunks"])
         self.ingestion_jobs = InMemoryIngestionJobRepository(self._tables["ingestion_jobs"])
         self.api_keys = InMemoryApiKeyRepository(self._tables["api_keys"])
+        self.agent_runs = InMemoryAgentRunRepository(
+            self._tables["agent_runs"], self._tables["agent_steps"]
+        )
         self.search = InMemoryChunkSearchIndex(self._store)  # reads committed state
         return await super().__aenter__()
 
@@ -319,25 +379,52 @@ class FakeReranker:
         ]
 
 
+type FakeTurn = str | list[ToolCall]
+type FakeReply = str | list[FakeTurn] | Callable[[Sequence[ChatMessage]], FakeTurn]
+
+
 class FakeChatModel:
-    """Streams a scripted reply in small pieces and records the prompts it received."""
+    """Streams scripted turns and records every request it received.
+
+    `reply` is either one answer used for every turn, a callable producing a turn
+    from the messages, or a list of turns consumed in order. A turn is answer text
+    (str) or a list of tool calls.
+    """
 
     def __init__(
-        self, reply: str | Callable[[Sequence[ChatMessage]], str] = "", *, fail: bool = False
+        self,
+        reply: FakeReply = "",
+        *,
+        fail: bool = False,
     ) -> None:
         self._reply = reply
         self._fail = fail
         self.calls: list[list[ChatMessage]] = []
+        self.tools_offered: list[list[str]] = []
 
     @property
     def model(self) -> str:
         return "fake-chat"
 
-    async def stream(self, messages: Sequence[ChatMessage]) -> AsyncIterator[ChatStreamEvent]:
+    async def stream(
+        self, messages: Sequence[ChatMessage], tools: Sequence[ToolSpec] = ()
+    ) -> AsyncIterator[ChatStreamEvent]:
         self.calls.append(list(messages))
+        self.tools_offered.append([t.name for t in tools])
         if self._fail:
             raise ChatModelError("simulated outage")
-        text = self._reply(messages) if callable(self._reply) else self._reply
-        for start in range(0, len(text), 4):
-            yield TextDelta(text[start : start + 4])
-        yield CompletionDone(TokenUsage(prompt_tokens=100, completion_tokens=len(text) // 4))
+        turn = self._next_turn(messages)
+        usage = TokenUsage(prompt_tokens=100, completion_tokens=10)
+        if isinstance(turn, list):
+            yield CompletionDone(usage, tool_calls=tuple(turn))
+            return
+        for start in range(0, len(turn), 4):
+            yield TextDelta(turn[start : start + 4])
+        yield CompletionDone(usage)
+
+    def _next_turn(self, messages: Sequence[ChatMessage]) -> FakeTurn:
+        if isinstance(self._reply, str):
+            return self._reply
+        if isinstance(self._reply, list):
+            return self._reply.pop(0) if self._reply else "(script exhausted)"
+        return self._reply(messages)

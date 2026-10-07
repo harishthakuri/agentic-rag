@@ -6,6 +6,9 @@ from typing import Self
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.ports.unit_of_work import UnitOfWork
+from app.infrastructure.persistence.repositories.agent_run_repository import (
+    SqlAlchemyAgentRunRepository,
+)
 from app.infrastructure.persistence.repositories.api_key_repository import (
     SqlAlchemyApiKeyRepository,
 )
@@ -41,6 +44,7 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         self.ingestion_jobs = SqlAlchemyIngestionJobRepository(self._session)
         self.api_keys = SqlAlchemyApiKeyRepository(self._session)
         self.search = PgChunkSearchIndex(self._session)
+        self.agent_runs = SqlAlchemyAgentRunRepository(self._session)
         return await super().__aenter__()
 
     async def __aexit__(
