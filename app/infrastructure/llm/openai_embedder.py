@@ -51,10 +51,6 @@ class OpenAICompatibleEmbedder:
         [vector] = await self._embed([text])
         return vector
 
-    async def check(self) -> None:
-        """Readiness: the endpoint is reachable and serves the model."""
-        await self._client.models.retrieve(self._spec.model)
-
     async def _embed(self, batch: list[str]) -> list[list[float]]:
         try:
             response = await self._client.embeddings.create(

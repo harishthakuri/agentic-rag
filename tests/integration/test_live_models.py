@@ -27,3 +27,32 @@ async def test_ollama_embeddings_have_configured_size_and_unit_length() -> None:
 
     # The related question must be closer to the passage than the unrelated one.
     assert cosine(query, document) > cosine(unrelated, document)
+
+
+async def test_llm_reranker_prefers_the_passage_that_answers() -> None:
+    from app.application.ports.reranking import RerankCandidate
+    from app.domain.value_objects import new_id
+
+    container = Container(get_settings())
+    assert container.reranker is not None, "set RERANKER=llm"
+    freshness = RerankCandidate(
+        new_id(),
+        "HTTP Caching > Freshness\nA cached response is fresh or stale. max-age makes a "
+        "response fresh; a stale response must be revalidated before reuse.",
+    )
+    etag = RerankCandidate(
+        new_id(),
+        "HTTP Caching > Validation > ETag\nIf the resource has not changed, the server "
+        "replies 304 Not Modified with no body, and the cache keeps using its copy.",
+    )
+    try:
+        scores = {
+            s.id: s.score
+            for s in await container.reranker.rerank(
+                "What does a 304 response mean?", [freshness, etag]
+            )
+        }
+    finally:
+        await container.aclose()
+
+    assert scores[etag.id] > scores[freshness.id]

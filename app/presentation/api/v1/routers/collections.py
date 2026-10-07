@@ -147,6 +147,7 @@ async def search(
             mode=body.mode,
             top_k=body.top_k,
             candidates=body.candidates,
+            rerank=body.rerank,
         )
     )
     return SearchResponse.from_domain(result)

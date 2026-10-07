@@ -141,6 +141,7 @@ async def api(migrated_postgres: PostgresUrls, tmp_path: Path) -> AsyncIterator[
         container: Container = app.state.container
         embedder = FakeEmbedder(container.embedder.spec)
         container.embedder = embedder  # type: ignore[assignment]
+        container.reranker = None  # no LLM calls; tests opt in with a fake reranker
         issued = await container.issue_api_key().execute("integration-tests")
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             yield Api(client, container, {"Authorization": f"Bearer {issued.raw_key}"}, embedder)

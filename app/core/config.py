@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     llm_base_url: str = "http://localhost:11434/v1"
     llm_api_key: SecretStr = SecretStr("ollama")
     llm_model: str = "gpt-oss:20b"
+    llm_timeout_seconds: float = 120.0
 
     # --- Embeddings (configured separately from the chat model) ------------
     embedding_base_url: str = "http://localhost:11434/v1"
@@ -76,6 +77,14 @@ class Settings(BaseSettings):
 
     # --- Retrieval ---------------------------------------------------------
     reranker: RerankerKind = RerankerKind.LLM
+    reranker_model: str | None = None  # defaults to llm_model
+    # Reasoning models (gpt-oss, o-series) only; set empty for models without it.
+    reranker_reasoning_effort: str | None = "low"
+    # First-stage candidates the reranker re-orders. Measured locally (gpt-oss:20b,
+    # M1 Max): 10 ≈ 3.4 s (one batch), 20 ≈ 7.8 s; Ollama runs batches sequentially.
+    rerank_depth: int = Field(default=10, ge=1, le=100)
+    reranker_batch_size: int = Field(default=10, ge=1)
+    reranker_max_concurrency: int = Field(default=2, ge=1)
 
     # --- Storage -----------------------------------------------------------
     storage_dir: Path = Path("./data/uploads")

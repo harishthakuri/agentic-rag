@@ -36,24 +36,31 @@ async def main(collection_name: str, questions: list[str], top: int) -> None:
             raise SystemExit(f"No collection named '{collection_name}'")
 
         search = container.search_collection()
+        variants = [(mode.value, mode, False) for mode in SearchMode]
+        if container.reranker is not None:
+            variants.append(("hybrid+rerank", SearchMode.HYBRID, True))
+
         for question in questions:
             print(f"\n\033[1mQ: {question}\033[0m")
-            for mode in SearchMode:
+            for label, mode, rerank in variants:
                 result = await search.execute(
-                    SearchQuery(collection.id, question, mode=mode, top_k=top)
+                    SearchQuery(collection.id, question, mode=mode, top_k=top, rerank=rerank)
                 )
-                print(f"  {mode.value:8} ({result.timings_ms['total']:6.1f} ms)")
+                note = f"  ! {result.rerank_error}" if result.rerank_error else ""
+                print(f"  {label:13} ({result.timings_ms['total']:7.1f} ms){note}")
                 if not result.hits:
-                    print("           (no results)")
+                    print("                (no results)")
                 for i, hit in enumerate(result.hits, start=1):
                     m = hit.match
                     where = " > ".join((m.document_title, *m.heading_path))
-                    ranks = (
-                        f"  [vector #{hit.vector_rank or '-'}, keyword #{hit.keyword_rank or '-'}]"
-                        if mode is SearchMode.HYBRID
-                        else ""
-                    )
-                    print(f"     {i}. {hit.score:8.4f}  {where}{ranks}")
+                    if rerank:
+                        detail = f"  [grade {hit.rerank_score:.0f}, was #{hit.retrieval_rank}]"
+                    elif mode is SearchMode.HYBRID:
+                        v, k = hit.vector_rank or "-", hit.keyword_rank or "-"
+                        detail = f"  [vector #{v}, keyword #{k}]"
+                    else:
+                        detail = ""
+                    print(f"     {i}. {hit.score:8.4f}  {where}{detail}")
     finally:
         await container.aclose()
 

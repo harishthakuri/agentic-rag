@@ -7,6 +7,7 @@ import asyncpg
 import pytest
 
 from app.worker import run_worker
+from tests.fakes import FakeReranker
 from tests.integration.conftest import Api, PostgresUrls
 from tests.integration.test_ingestion import GUIDE
 
@@ -138,3 +139,20 @@ async def test_search_validation_and_not_found(api: Api) -> None:
 
     assert bad.status_code == 422
     assert missing.status_code == 404
+
+
+async def test_reranked_search_through_the_api(api: Api) -> None:
+    collection_id = await _ingested_collection(api, "k8s")
+    api.container.reranker = FakeReranker(preferred={"Ingress"})
+
+    reranked = await _search(api, collection_id, query="ClusterIP default service type")
+    plain = await _search(api, collection_id, query="ClusterIP default service type", rerank=False)
+
+    assert reranked["reranker"] == "fake"
+    assert reranked["hits"][0]["heading_path"] == ["Ingress"]
+    grades = [hit["rerank_score"] for hit in reranked["hits"]]
+    assert grades == sorted(grades, reverse=True)
+    assert all(isinstance(hit["retrieval_rank"], int) for hit in reranked["hits"])
+    assert "rerank" in reranked["timings_ms"]
+    assert plain["reranker"] is None
+    assert all(hit["rerank_score"] is None for hit in plain["hits"])

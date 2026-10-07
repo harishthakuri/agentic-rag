@@ -10,6 +10,7 @@ from datetime import timedelta
 
 from openai import AsyncOpenAI
 
+from app.application.ports.reranking import Reranker
 from app.application.ports.unit_of_work import UnitOfWork
 from app.application.use_cases.api_keys import (
     AuthenticateApiKey,
@@ -31,16 +32,17 @@ from app.application.use_cases.ingestion import (
 )
 from app.application.use_cases.retrieval import SearchCollection
 from app.application.use_cases.system.check_readiness import CheckReadiness
-from app.core.config import Settings
+from app.core.config import RerankerKind, Settings
 from app.domain.value_objects import EmbeddingSpec
 from app.infrastructure.chunking import StructureAwareChunker, TiktokenCounter
-from app.infrastructure.llm.health import EmbeddingHealthCheck
+from app.infrastructure.llm.health import ModelHealthCheck
 from app.infrastructure.llm.openai_embedder import OpenAICompatibleEmbedder
 from app.infrastructure.parsing import DefaultParserRegistry
 from app.infrastructure.persistence.database import Database
 from app.infrastructure.persistence.health import DatabaseHealthCheck
 from app.infrastructure.persistence.orm import EMBEDDING_DIMENSIONS
 from app.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from app.infrastructure.reranking import LLMReranker
 from app.infrastructure.storage.local import LocalFileStorage
 
 
@@ -76,6 +78,28 @@ class Container:
             EmbeddingSpec(model=settings.embedding_model, dimensions=settings.embedding_dim),
             batch_size=settings.embedding_batch_size,
         )
+        self._llm_client = AsyncOpenAI(
+            base_url=settings.llm_base_url,
+            api_key=settings.llm_api_key.get_secret_value(),
+            timeout=settings.llm_timeout_seconds,
+            max_retries=1,
+        )
+        self.reranker = self._build_reranker(settings)
+
+    def _build_reranker(self, settings: Settings) -> Reranker | None:
+        match settings.reranker:
+            case RerankerKind.NONE:
+                return None
+            case RerankerKind.LLM:
+                return LLMReranker(
+                    self._llm_client,
+                    settings.reranker_model or settings.llm_model,
+                    batch_size=settings.reranker_batch_size,
+                    max_concurrency=settings.reranker_max_concurrency,
+                    reasoning_effort=settings.reranker_reasoning_effort or None,
+                )
+            case RerankerKind.CROSS_ENCODER:
+                raise ConfigurationError("RERANKER=cross_encoder is not implemented yet")
 
     # --- Infrastructure ----------------------------------------------------
     def unit_of_work(self) -> UnitOfWork:
@@ -83,8 +107,15 @@ class Container:
 
     # --- System ------------------------------------------------------------
     def check_readiness(self) -> CheckReadiness:
+        settings = self.settings
         return CheckReadiness(
-            checks=[DatabaseHealthCheck(self.database), EmbeddingHealthCheck(self.embedder)]
+            checks=[
+                DatabaseHealthCheck(self.database),
+                ModelHealthCheck(
+                    "embedding_model", self._embedding_client, settings.embedding_model
+                ),
+                ModelHealthCheck("chat_model", self._llm_client, settings.llm_model),
+            ]
         )
 
     # --- Collections -------------------------------------------------------
@@ -133,7 +164,12 @@ class Container:
 
     # --- Retrieval ---------------------------------------------------------
     def search_collection(self) -> SearchCollection:
-        return SearchCollection(self.unit_of_work, self.embedder)
+        return SearchCollection(
+            self.unit_of_work,
+            self.embedder,
+            self.reranker,
+            rerank_depth=self.settings.rerank_depth,
+        )
 
     # --- API keys ----------------------------------------------------------
     def authenticate_api_key(self) -> AuthenticateApiKey:
@@ -151,4 +187,5 @@ class Container:
     # --- Lifecycle ---------------------------------------------------------
     async def aclose(self) -> None:
         await self._embedding_client.close()
+        await self._llm_client.close()
         await self.database.dispose()

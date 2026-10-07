@@ -29,6 +29,10 @@ class SearchRequest(BaseModel):
         le=MAX_CANDIDATES,
         description="Candidates fetched from each retriever before fusion",
     )
+    rerank: bool | None = Field(
+        default=None,
+        description="Rerank the top candidates (default: on when a reranker is configured)",
+    )
 
     @model_validator(mode="after")
     def _candidates_cover_top_k(self) -> "SearchRequest":
@@ -49,7 +53,11 @@ class SearchHitResponse(BaseModel):
     heading_path: list[str]
     page: int | None
     text: str
-    score: float = Field(description="Final score: similarity, keyword rank, or RRF score")
+    score: float = Field(
+        description="Final score: rerank grade, else similarity, keyword score or RRF score"
+    )
+    retrieval_rank: int = Field(description="Position after the first stage, before reranking")
+    rerank_score: float | None
     vector: RetrieverRank | None = Field(description="Position in the vector results, if any")
     keyword: RetrieverRank | None = Field(description="Position in the keyword results, if any")
 
@@ -64,6 +72,8 @@ class SearchHitResponse(BaseModel):
             page=m.page,
             text=m.text,
             score=round(hit.score, 6),
+            retrieval_rank=hit.retrieval_rank,
+            rerank_score=hit.rerank_score,
             vector=_rank(hit.vector_rank, hit.vector_similarity),
             keyword=_rank(hit.keyword_rank, hit.keyword_score),
         )
@@ -74,6 +84,10 @@ class SearchResponse(BaseModel):
     mode: SearchMode
     hits: list[SearchHitResponse]
     timings_ms: dict[str, float]
+    reranker: str | None = Field(description="Reranker used, if the hits were reranked")
+    rerank_error: str | None = Field(
+        description="Why reranking was skipped (hits are then in first-stage order)"
+    )
 
     @classmethod
     def from_domain(cls, result: SearchResult) -> "SearchResponse":
@@ -82,6 +96,8 @@ class SearchResponse(BaseModel):
             mode=result.mode,
             hits=[SearchHitResponse.from_domain(h) for h in result.hits],
             timings_ms=result.timings_ms,
+            reranker=result.reranker,
+            rerank_error=result.rerank_error,
         )
 
 

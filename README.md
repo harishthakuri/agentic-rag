@@ -97,7 +97,9 @@ curl -X POST localhost:8000/api/v1/collections/<collection-id>/search \
   -d '{"query": "Why does my filtered vector search return fewer rows?", "mode": "hybrid"}'
 ```
 
-`mode` is `vector` (semantic), `keyword` (full-text) or `hybrid` (both, fused with Reciprocal Rank Fusion). Each hit shows its rank in both retrievers. To compare the modes side by side:
+`mode` is `vector` (semantic), `keyword` (full-text) or `hybrid` (both, fused with Reciprocal Rank Fusion). Each hit shows its rank in both retrievers.
+
+With `RERANKER=llm` (the default), the top candidates are then **reranked** by the chat model, which grades each passage 0–3 for how well it answers the query. This is more precise but takes seconds. Pass `"rerank": false` to skip it. To compare all modes side by side:
 
 ```bash
 uv run python scripts/compare_search.py "your question"

@@ -7,7 +7,7 @@ from app.domain.exceptions import ConflictError, DomainValidationError
 from app.domain.models import Chunk, Collection, Document, DocumentType
 from app.domain.services.rank_fusion import reciprocal_rank_fusion
 from app.domain.value_objects import CollectionName, ContentHash, EmbeddingSpec, new_id
-from tests.fakes import FakeEmbedder, InMemoryStore, InMemoryUnitOfWork
+from tests.fakes import FakeEmbedder, FakeReranker, InMemoryStore, InMemoryUnitOfWork
 
 SPEC = EmbeddingSpec(model="test-embedder", dimensions=8)
 
@@ -150,3 +150,81 @@ def test_search_query_validation(kwargs: dict[str, object]) -> None:
     params: dict[str, object] = {"collection_id": new_id(), "text": "pods", **kwargs}
     with pytest.raises(DomainValidationError):
         SearchQuery(**params)  # type: ignore[arg-type]
+
+
+# --- Reranking ----------------------------------------------------------------
+async def test_reranker_reorders_and_keeps_first_stage_rank(
+    uow: UnitOfWorkFactory, embedder: FakeEmbedder, collection: Collection
+) -> None:
+    reranker = FakeReranker(preferred={"etag"})
+    search = SearchCollection(uow, embedder, reranker)
+
+    result = await search.execute(
+        SearchQuery(collection.id, "ingress routes http", mode=SearchMode.HYBRID)
+    )
+
+    top = result.hits[0]
+    assert top.match.text == "etag validates caches"  # promoted by the reranker
+    assert top.rerank_score == 1.0 and top.score == 1.0
+    assert top.retrieval_rank > 1  # it was not first before reranking
+    assert result.reranker == "fake"
+    assert "rerank" in result.timings_ms
+    # The reranker reads the location (title > headings) and the passage.
+    assert reranker.calls[0][1][0].text.startswith("Guide\n")
+
+
+async def test_rerank_ties_keep_first_stage_order(
+    uow: UnitOfWorkFactory, embedder: FakeEmbedder, collection: Collection
+) -> None:
+    plain = await SearchCollection(uow, embedder).execute(
+        SearchQuery(collection.id, "ingress routes http")
+    )
+    tied = await SearchCollection(uow, embedder, FakeReranker()).execute(  # all grades 0
+        SearchQuery(collection.id, "ingress routes http")
+    )
+    assert [h.match.chunk_id for h in tied.hits] == [h.match.chunk_id for h in plain.hits]
+
+
+async def test_reranker_failure_falls_back_to_first_stage_order(
+    uow: UnitOfWorkFactory, embedder: FakeEmbedder, collection: Collection
+) -> None:
+    result = await SearchCollection(uow, embedder, FakeReranker(fail=True)).execute(
+        SearchQuery(collection.id, "ingress routes http")
+    )
+
+    assert result.hits  # the request still succeeds
+    assert result.reranker is None
+    assert result.rerank_error == "simulated reranker outage"
+    assert all(h.rerank_score is None for h in result.hits)
+
+
+async def test_rerank_can_be_disabled_per_request(
+    uow: UnitOfWorkFactory, embedder: FakeEmbedder, collection: Collection
+) -> None:
+    reranker = FakeReranker(preferred={"etag"})
+    result = await SearchCollection(uow, embedder, reranker).execute(
+        SearchQuery(collection.id, "ingress routes http", rerank=False)
+    )
+    assert reranker.calls == []
+    assert result.reranker is None
+
+
+async def test_rerank_requested_without_reranker_is_rejected(
+    uow: UnitOfWorkFactory, embedder: FakeEmbedder, collection: Collection
+) -> None:
+    with pytest.raises(DomainValidationError, match="not configured"):
+        await SearchCollection(uow, embedder).execute(
+            SearchQuery(collection.id, "pods", rerank=True)
+        )
+
+
+async def test_rerank_depth_limits_candidates_but_covers_top_k(
+    uow: UnitOfWorkFactory, embedder: FakeEmbedder, collection: Collection
+) -> None:
+    reranker = FakeReranker()
+    search = SearchCollection(uow, embedder, reranker, rerank_depth=1)
+
+    result = await search.execute(SearchQuery(collection.id, "pods", top_k=2))
+
+    assert len(reranker.calls[0][1]) == 2  # max(depth=1, top_k=2)
+    assert len(result.hits) == 2

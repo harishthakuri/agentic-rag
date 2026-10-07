@@ -13,6 +13,7 @@ from typing import Self
 from uuid import UUID
 
 from app.application.ports.embeddings import EmbeddingUnavailableError
+from app.application.ports.reranking import RerankCandidate, RerankError, RerankScore
 from app.application.ports.search import ChunkMatch
 from app.application.ports.unit_of_work import UnitOfWork
 from app.application.use_cases.collections import CollectionAlreadyExistsError
@@ -286,3 +287,25 @@ class FakeEmbedder:
         raw = [seed[i % len(seed)] - 127.5 for i in range(self._spec.dimensions)]
         norm = math.sqrt(sum(x * x for x in raw))
         return [x / norm for x in raw]
+
+
+class FakeReranker:
+    """Grades a candidate by how many of `preferred` words its text contains."""
+
+    def __init__(self, preferred: set[str] | None = None, *, fail: bool = False) -> None:
+        self._preferred = preferred or set()
+        self._fail = fail
+        self.calls: list[tuple[str, list[RerankCandidate]]] = []
+
+    @property
+    def name(self) -> str:
+        return "fake"
+
+    async def rerank(self, query: str, candidates: Sequence[RerankCandidate]) -> list[RerankScore]:
+        self.calls.append((query, list(candidates)))
+        if self._fail:
+            raise RerankError("simulated reranker outage")
+        return [
+            RerankScore(id=c.id, score=float(len(self._preferred & set(c.text.split()))))
+            for c in candidates
+        ]

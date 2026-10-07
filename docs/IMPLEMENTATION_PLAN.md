@@ -1,6 +1,6 @@
 # Simple RAG: Implementation Plan
 
-> Status: **In progress.** Phases 0–4 are complete.
+> Status: **In progress.** Phases 0–5 are complete.
 > Last updated: 2026-10-07
 
 ---
@@ -345,7 +345,14 @@ class Reranker(Protocol):  # application/ports
 - Selected with `RERANKER=llm|none|cross_encoder`. It can also be overridden per request (`"rerank": false`) for side-by-side comparison.
 - **Latency budget:** reranking is the most expensive retrieval step. The response includes timings per stage (`embed_ms`, `search_ms`, `rerank_ms`, `generate_ms`) so the cost is visible.
 
-### 5.5 How we will judge it
+### 5.5 As implemented, and what we measured
+
+- **No reranker = `RERANKER=none`**, rather than a `NoopReranker` class: search simply skips the stage. `rerank` can also be set per request.
+- **The schema must say exactly what you want.** With a generic "array of grades" JSON schema, `gpt-oss:20b` answered `{"grades": []}` every time: valid JSON, zero grades. The schema now requires exactly *n* grades and restricts passage numbers to `1..n`. After that change, every run graded every passage correctly. Validation stays in place, and any failure falls back to the first-stage order with `rerank_error` set.
+- **Quality on the sample corpus** (`scripts/compare_search.py`): reranking fixed the case hybrid search got wrong ("What does a 304 response mean?": ETag moved from #2 to #1, and "Freshness" dropped to grade 0). It kept the correct #1 everywhere else. Grades also separate clearly relevant (3) from irrelevant (0) chunks, a signal `/ask` can use to drop useless context.
+- **Latency is the cost**: about 3.4 s for 10 candidates (one batch) and 7.8 s for 20, against about 0.2 s for hybrid search alone (`gpt-oss:20b`, `reasoning_effort=low`, M1 Max). Ollama processes the batches sequentially, so concurrency doesn't help locally. `RERANK_DEPTH` defaults to 10. A cross-encoder (phase 9) should bring this down to about 0.1–0.3 s.
+
+### 5.6 How we will judge it
 
 The eval harness (§7) reports **recall@k, MRR and nDCG@k** for: `vector` → `hybrid` → `hybrid + LLM rerank` → later `hybrid + cross-encoder`. A reranker is only worth its latency if it measurably moves those numbers on our dataset. That comparison table goes in the README.
 
@@ -499,8 +506,8 @@ Each phase ends with passing tests and **one or more focused git commits**.
 - [x] Integration tests with fixed vectors so the ranking is deterministic
 
 ### Phase 5: Reranking
-- [ ] `Reranker` port, `NoopReranker`, `LLMReranker` (structured output, batching, fallback)
-- [ ] `rerank` flag on `/search`, stage timings
+- [x] `Reranker` port, `NoopReranker`, `LLMReranker` (structured output, batching, fallback)
+- [x] `rerank` flag on `/search`, stage timings
 
 ### Phase 6: One-shot RAG (`/ask`)
 - [ ] `OpenAICompatibleChatModel` (streaming, tool calls, usage capture)
