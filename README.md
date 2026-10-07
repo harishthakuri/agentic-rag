@@ -153,6 +153,26 @@ make eval-retrieval    # ~3 min
 make eval              # ~30 min locally (about 250 LLM calls)
 ```
 
+## Run with Docker
+
+The image runs in three roles: API, ingestion worker and migrations. `docker compose` adds PostgreSQL + pgvector, provisioned with the same least-privilege roles as production:
+
+```bash
+docker compose up -d --build                         # or: make up
+docker compose exec api rag-admin api-key create --name dev
+open http://localhost:8000
+```
+
+Ollama stays on the host (Docker on macOS can't use the Apple GPU). Set `OLLAMA_URL` for your Docker runtime:
+
+| Runtime | `OLLAMA_URL` |
+|---|---|
+| Docker Desktop | `http://host.docker.internal:11434` (default) |
+| Rancher Desktop | `http://host.lima.internal:11434` |
+| Linux | default, with Ollama started using `OLLAMA_HOST=0.0.0.0` |
+
+The image is about 80 MB on a slim Python base. It runs as a non-root user, with the tokenizer data downloaded at build time and JSON logs. Database passwords in `docker-compose.yml` are local development defaults; override them through environment variables.
+
 ## Development
 
 ```bash

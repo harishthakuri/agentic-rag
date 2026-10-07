@@ -1,0 +1,87 @@
+# Local stack: Postgres + pgvector, migrations, API and ingestion worker.
+#
+#   docker compose up -d --build     # http://localhost:8000
+#   docker compose exec api rag-admin api-key create --name dev
+#
+# Models: Ollama runs on the host (Docker on macOS can't use the Apple GPU).
+# Containers reach it through OLLAMA_URL, whose host name depends on the runtime:
+#   Docker Desktop:  http://host.docker.internal:11434  (default)
+#   Rancher Desktop: http://host.lima.internal:11434
+#   Linux:           default, and start Ollama with OLLAMA_HOST=0.0.0.0
+# To use another provider (e.g. OpenAI), set DOCKER_LLM_BASE_URL, LLM_API_KEY and
+# LLM_MODEL. Base URLs use DOCKER_-prefixed names on purpose: Compose also reads the
+# project's .env, whose LLM_BASE_URL=http://localhost... is right for `make run`
+# but wrong inside a container.
+#
+# The passwords below are local development defaults: override them via
+# environment variables for anything that isn't your own machine.
+
+x-app: &app
+  image: agentic-rag:latest # built once by the api service, reused by migrate and worker
+  environment: &app-env
+    DATABASE_URL: postgresql+asyncpg://simple_rag_app:${APP_DB_PASSWORD:-app-dev-password}@postgres:5432/simple-rag-db
+    LLM_BASE_URL: ${DOCKER_LLM_BASE_URL:-${OLLAMA_URL:-http://host.docker.internal:11434}/v1}
+    LLM_API_KEY: ${LLM_API_KEY:-ollama}
+    LLM_MODEL: ${LLM_MODEL:-gpt-oss:20b}
+    EMBEDDING_BASE_URL: ${DOCKER_EMBEDDING_BASE_URL:-${OLLAMA_URL:-http://host.docker.internal:11434}/v1}
+    EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-ollama}
+    EMBEDDING_MODEL: ${EMBEDDING_MODEL:-qwen3-embedding:8b}
+    RERANKER: ${RERANKER:-llm}
+  extra_hosts:
+    - "host.docker.internal:host-gateway" # Linux; built in on Docker/Rancher Desktop
+  volumes:
+    - uploads:/data/uploads
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres-dev-password}
+      POSTGRES_DB: simple-rag-db
+      OWNER_DB_PASSWORD: ${OWNER_DB_PASSWORD:-owner-dev-password}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-app-dev-password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/db:/scripts:ro
+      - ./scripts/db/docker-init.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d simple-rag-db -h 127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *app-env
+      MIGRATIONS_DATABASE_URL: postgresql+asyncpg://simple_rag_owner:${OWNER_DB_PASSWORD:-owner-dev-password}@postgres:5432/simple-rag-db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *app
+    build: .
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *app
+    command: ["rag-worker"]
+    healthcheck:
+      disable: true # no HTTP server; the image's healthcheck is for the API
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
+  uploads:

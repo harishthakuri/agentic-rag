@@ -1,0 +1,19 @@
+# Only what the image needs: keep secrets, caches and local data out of the build context.
+.git
+.venv
+.env
+.env.*
+!.env.example
+**/__pycache__
+.mypy_cache
+.ruff_cache
+.pytest_cache
+data
+evals
+tests
+sample_data
+docs
+scripts
+.vscode
+.idea
+.DS_Store

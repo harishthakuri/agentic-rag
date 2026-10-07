@@ -547,7 +547,7 @@ Each phase ends with passing tests and **one or more focused git commits**.
 ### Phase 9: Polish and stretch goals
 - [ ] `CrossEncoderReranker` (optional dependency group `[rerank-local]`) + eval comparison
 - [ ] Embedding-dimension experiment: 1024 `vector` vs 2048 `halfvec`
-- [ ] Dockerfile + `docker-compose.yml` for the app and worker
+- [x] Dockerfile + `docker-compose.yml` for the app and worker
 - [ ] GitHub Actions CI: ruff, mypy, import-linter, unit + integration tests
 - [ ] ADRs in `docs/adr/` for the key decisions in this plan
 - [ ] README with architecture diagram, quickstart and eval results

@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install run worker api-key ingest-samples eval eval-retrieval fmt lint typecheck arch test test-integration check migrate migration downgrade
+.PHONY: help install run worker api-key ingest-samples eval eval-retrieval up down logs fmt lint typecheck arch test test-integration check migrate migration downgrade
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -25,6 +25,15 @@ eval: ## Evaluate retrieval and answers (slow: many LLM calls; see evals/__main_
 
 eval-retrieval: ## Evaluate retrieval only (fast)
 	uv run python -m evals --skip-answers
+
+up: ## Start the Docker stack (Postgres, migrations, API, worker) at http://localhost:8000
+	docker compose up -d --build
+
+down: ## Stop the Docker stack (data volumes are kept; add -v to delete them)
+	docker compose down
+
+logs: ## Follow logs of the Docker stack
+	docker compose logs -f api worker
 
 fmt: ## Format code
 	uv run ruff format .
