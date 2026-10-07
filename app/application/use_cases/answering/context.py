@@ -5,9 +5,10 @@ What the model sees matters as much as which model it is:
 1. **Drop irrelevant hits.** When results were reranked, chunks graded below
    `min_rerank_score` are dropped. Irrelevant context dilutes attention and
    invites the model to "use" it anyway.
-2. **Merge neighbours.** Adjacent chunks of the same document (ordinal n and
-   n+1) become one source, and the paragraphs repeated by chunk overlap are
-   removed. One coherent passage reads better than two fragments.
+2. **Merge neighbours.** Adjacent chunks of the same *section* (a long section
+   the chunker had to split) become one source again, without the paragraphs
+   repeated by chunk overlap. Chunks of different sections stay separate, so
+   every source carries an accurate location.
 3. **Number by relevance.** [1] is the most relevant source, which helps the
    model and keeps citations stable.
 4. **Respect a token budget.** Sources are added in relevance order while they
@@ -78,7 +79,7 @@ class ContextBuilder:
 
 
 def _adjacent_groups(hits: Sequence[SearchHit]) -> list[list[SearchHit]]:
-    """Group hits of the same document with consecutive ordinals. Groups keep the
+    """Group hits of the same section with consecutive ordinals. Groups keep the
     position of their most relevant hit; chunks inside a group are in document order."""
     groups: list[list[SearchHit]] = []
     for hit in hits:
@@ -92,7 +93,8 @@ def _adjacent_groups(hits: Sequence[SearchHit]) -> list[list[SearchHit]]:
 
 
 def _touches(group: list[SearchHit], hit: SearchHit) -> bool:
-    if group[0].match.document_id != hit.match.document_id:
+    first = group[0].match
+    if (first.document_id, first.heading_path) != (hit.match.document_id, hit.match.heading_path):
         return False
     return hit.match.ordinal in (group[0].match.ordinal - 1, group[-1].match.ordinal + 1)
 

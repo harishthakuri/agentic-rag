@@ -31,7 +31,7 @@ from tests.unit.test_retrieval import SPEC, seed_collection
         ("Both [2][1] and again [1].", [2, 1], []),
         ("Grouped [1, 3].", [1, 3], []),
         ("Made up [7].", [], [7]),
-        ("A link [docs](http://x) and code a[0] are not citations.", [], []),
+        ("A link [1](http://x) and code `a[0]` are not citations.", [], []),
         ("No citations at all.", [], []),
     ],
 )
@@ -160,3 +160,28 @@ async def test_no_relevant_sources_means_no_llm_call(
     assert result.sources == []
     assert result.answer == prompts.NO_SOURCES_ANSWER
     assert result.model is None
+
+
+def test_citations_attached_to_words_count_but_code_does_not() -> None:
+    answer = "Use ipvs mode[1]. In code, `items[0]` and\n```\nrows[2]\n```\nare not citations."
+    check = check_citations(answer, source_count=3)
+    assert (check.cited, check.invalid) == ([1], [])
+
+
+def test_context_does_not_merge_neighbours_from_different_sections() -> None:
+    def hit(ordinal: int, section: str, rank: int) -> SearchHit:
+        match = ChunkMatch(
+            chunk_id=new_id(),
+            document_id=DOC_A,
+            document_title="Doc A",
+            ordinal=ordinal,
+            text=f"text of {section}",
+            heading_path=(section,),
+            page=None,
+            score=1.0,
+        )
+        return SearchHit(match=match, score=1.0, retrieval_rank=rank)
+
+    sources = ContextBuilder(WordCounter()).build([hit(6, "Vary", 1), hit(7, "Cache busting", 2)])
+
+    assert [s.heading_path for s in sources] == [("Vary",), ("Cache busting",)]

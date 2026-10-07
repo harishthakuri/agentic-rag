@@ -8,8 +8,11 @@ can see them.
 import re
 from dataclasses import dataclass
 
-# [1]  [1, 3]  [2][3]  (but not markdown links like [text](url) or code like a[i])
-_CITATION = re.compile(r"(?<!\w)\[(\d+(?:\s*,\s*\d+)*)\](?!\()")
+# [1]  [1, 3]  [2][3]  mode[1]  (but not markdown links like [1](url)).
+# Models often attach citations directly to a word ("mode[1]"), so no word-boundary
+# rule; code like `items[0]` is excluded by removing code before scanning.
+_CITATION = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\](?!\()")
+_CODE = re.compile(r"```.*?```|`[^`\n]*`", re.DOTALL)
 
 
 # Some models (gpt-oss) were trained to cite with lenticular brackets: 【1】.
@@ -30,7 +33,7 @@ class CitationCheck:
 
 def check_citations(answer: str, source_count: int) -> CitationCheck:
     seen: list[int] = []
-    for match in _CITATION.finditer(answer):
+    for match in _CITATION.finditer(_CODE.sub(" ", answer)):
         for number in (int(n) for n in match.group(1).split(",")):
             if number not in seen:
                 seen.append(number)
