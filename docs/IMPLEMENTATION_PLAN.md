@@ -331,9 +331,10 @@ millions of chunks ──(fast, approximate)──► 50 candidates ──(slow,
 ### 5.4 v1 design
 
 ```python
-class Reranker(Protocol):                       # application/ports
-    async def rerank(self, query: str, candidates: list[RetrievedChunk],
-                     top_n: int) -> list[RankedChunk]: ...
+class Reranker(Protocol):  # application/ports
+    async def rerank(
+        self, query: str, candidates: list[RetrievedChunk], top_n: int
+    ) -> list[RankedChunk]: ...
 ```
 
 - **`LLMReranker`:** sends the query plus a batch of candidates (truncated snippets) and asks for `[{"id": ..., "score": 0-3, "reason": "..."}]` as a JSON schema response. Ties are broken by the original RRF rank. Batches are scored concurrently. If the output cannot be parsed, it **falls back to RRF order** instead of failing the request.
