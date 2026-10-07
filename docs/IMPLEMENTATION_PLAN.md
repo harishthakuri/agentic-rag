@@ -1,6 +1,6 @@
 # Simple RAG: Implementation Plan
 
-> Status: **In progress.** Phases 0–3 are complete.
+> Status: **In progress.** Phases 0–4 are complete.
 > Last updated: 2026-10-07
 
 ---
@@ -238,6 +238,9 @@ LIMIT :top_n;                                -- k = 60 (standard RRF constant)
 - **Why RRF:** cosine distances and `ts_rank` scores are on different scales and cannot be added directly. RRF uses **ranks only**, so no score calibration is needed.
 - **Filtered vector search:** filtering by `collection_id` *after* an HNSW scan can return too few rows. pgvector 0.8's `SET LOCAL hnsw.iterative_scan = relaxed_order` keeps scanning until enough rows match. This is a subtle production issue, and we handle it explicitly.
 - **Search modes** (`vector`, `keyword`, `hybrid`) can be selected per request, so you can compare them side by side.
+- **As implemented:** the two retrievers are separate queries behind a `ChunkSearchIndex` port, and RRF is a pure function in the domain layer (`domain/services/rank_fusion.py`). This keeps fusion storage-independent and testable, and lets each hit report its rank in *both* lists.
+- **Keyword semantics:** `websearch_to_tsquery` ANDs every word, so a natural-language question usually matches *nothing* (verified on the sample corpus). Questions therefore OR their stemmed terms and let `ts_rank_cd` reward chunks matching more of them. Explicit search syntax (`"phrase"`, `or`, `-term`) still goes through `websearch_to_tsquery`.
+- **Observed on the sample corpus** (`scripts/compare_search.py`): vector search wins on paraphrases, keyword search on exact identifiers. Hybrid is right when the two agree, but it can demote a correct vector hit when keyword search favours a chunk that merely repeats query words ("What does a 304 response mean?"). That is the motivation for reranking (§5).
 
 ### 4.4 Retrieval pipeline
 
@@ -491,9 +494,9 @@ Each phase ends with passing tests and **one or more focused git commits**.
 - [x] Sample corpus in `sample_data/` and an ingest script
 
 ### Phase 4: Retrieval
-- [ ] `PgHybridSearchRepository`: `vector`, `keyword`, `hybrid` (RRF) modes with iterative scan
-- [ ] `/search` endpoint returning per-stage scores and ranks (for learning and debugging)
-- [ ] Integration tests with fixed vectors so the ranking is deterministic
+- [x] `PgHybridSearchRepository`: `vector`, `keyword`, `hybrid` (RRF) modes with iterative scan
+- [x] `/search` endpoint returning per-stage scores and ranks (for learning and debugging)
+- [x] Integration tests with fixed vectors so the ranking is deterministic
 
 ### Phase 5: Reranking
 - [ ] `Reranker` port, `NoopReranker`, `LLMReranker` (structured output, batching, fallback)

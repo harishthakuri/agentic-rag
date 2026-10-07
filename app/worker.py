@@ -1,7 +1,7 @@
 """Ingestion worker: claims queued jobs and runs the ingestion pipeline.
 
-    uv run python -m app.worker           # run until stopped (Ctrl-C / SIGTERM)
-    uv run python -m app.worker --once    # drain the queue, then exit
+    uv run rag-worker           # run until stopped (Ctrl-C / SIGTERM)
+    uv run rag-worker --once    # drain the queue, then exit
 
 Several workers can run side by side: claiming uses FOR UPDATE SKIP LOCKED,
 so each job goes to exactly one worker. On shutdown, the current job finishes

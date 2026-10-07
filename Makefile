@@ -12,10 +12,10 @@ run: ## Run the API with auto-reload
 	uv run uvicorn app.main:create_app --factory --reload
 
 worker: ## Run the ingestion worker (parses, chunks and embeds uploaded documents)
-	uv run python -m app.worker
+	uv run rag-worker
 
 api-key: ## Issue an API key: make api-key name=dev
-	uv run python -m app.presentation.cli api-key create --name "$(name)"
+	uv run rag-admin api-key create --name "$(name)"
 
 ingest-samples: ## Upload sample_data/ (needs RAG_API_KEY, make run and make worker)
 	uv run python scripts/ingest_samples.py

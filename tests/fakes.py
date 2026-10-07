@@ -13,6 +13,7 @@ from typing import Self
 from uuid import UUID
 
 from app.application.ports.embeddings import EmbeddingUnavailableError
+from app.application.ports.search import ChunkMatch
 from app.application.ports.unit_of_work import UnitOfWork
 from app.application.use_cases.collections import CollectionAlreadyExistsError
 from app.application.use_cases.documents import DuplicateDocumentError
@@ -151,6 +152,55 @@ class InMemoryIngestionJobRepository(IngestionJobRepository):
         return job
 
 
+class InMemoryChunkSearchIndex:
+    """Naive versions of the two retrievers: exact cosine similarity, and the number
+    of shared lowercase words standing in for full-text ranking."""
+
+    def __init__(self, store: "InMemoryStore") -> None:
+        self._store = store
+
+    def _chunks(self, collection_id: UUID) -> list[Chunk]:
+        return [
+            c
+            for chunks in self._store.chunks.values()
+            for c in chunks
+            if c.collection_id == collection_id
+        ]
+
+    def _match(self, chunk: Chunk, score: float) -> ChunkMatch:
+        document = self._store.documents[chunk.document_id]
+        return ChunkMatch(
+            chunk_id=chunk.id,
+            document_id=chunk.document_id,
+            document_title=document.title,
+            ordinal=chunk.ordinal,
+            text=chunk.text,
+            heading_path=chunk.heading_path,
+            page=chunk.page,
+            score=score,
+        )
+
+    async def vector_search(
+        self, collection_id: UUID, embedding: Sequence[float], limit: int
+    ) -> list[ChunkMatch]:
+        scored = [
+            (sum(a * b for a, b in zip(c.embedding, embedding, strict=True)), c)
+            for c in self._chunks(collection_id)
+        ]
+        scored.sort(key=lambda pair: -pair[0])
+        return [self._match(c, s) for s, c in scored[:limit]]
+
+    async def keyword_search(self, collection_id: UUID, query: str, limit: int) -> list[ChunkMatch]:
+        terms = set(query.lower().split())
+        scored = [
+            (len(terms & set(c.contextual_text.lower().split())), c)
+            for c in self._chunks(collection_id)
+        ]
+        scored = [pair for pair in scored if pair[0] > 0]
+        scored.sort(key=lambda pair: -pair[0])
+        return [self._match(c, float(s)) for s, c in scored[:limit]]
+
+
 class InMemoryStore:
     """The 'database': committed state shared by every unit of work."""
 
@@ -179,6 +229,7 @@ class InMemoryUnitOfWork(UnitOfWork):
         self.chunks = InMemoryChunkRepository(self._tables["chunks"])
         self.ingestion_jobs = InMemoryIngestionJobRepository(self._tables["ingestion_jobs"])
         self.api_keys = InMemoryApiKeyRepository(self._tables["api_keys"])
+        self.search = InMemoryChunkSearchIndex(self._store)  # reads committed state
         return await super().__aenter__()
 
     async def commit(self) -> None:

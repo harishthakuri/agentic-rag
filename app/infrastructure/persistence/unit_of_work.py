@@ -19,6 +19,7 @@ from app.infrastructure.persistence.repositories.document_repository import (
 from app.infrastructure.persistence.repositories.ingestion_job_repository import (
     SqlAlchemyIngestionJobRepository,
 )
+from app.infrastructure.persistence.search.pg_search import PgChunkSearchIndex
 
 
 class SqlAlchemyUnitOfWork(UnitOfWork):
@@ -39,6 +40,7 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         self.chunks = SqlAlchemyChunkRepository(self._session)
         self.ingestion_jobs = SqlAlchemyIngestionJobRepository(self._session)
         self.api_keys = SqlAlchemyApiKeyRepository(self._session)
+        self.search = PgChunkSearchIndex(self._session)
         return await super().__aenter__()
 
     async def __aexit__(

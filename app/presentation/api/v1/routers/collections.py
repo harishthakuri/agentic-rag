@@ -16,6 +16,7 @@ from fastapi import (
 from app.application.dto.pagination import PageRequest
 from app.application.use_cases.collections import CreateCollectionCommand
 from app.application.use_cases.ingestion import UploadDocumentCommand
+from app.application.use_cases.retrieval import SearchQuery
 from app.presentation.api.dependencies import (
     ContainerDep,
     CreateCollectionDep,
@@ -23,6 +24,7 @@ from app.presentation.api.dependencies import (
     GetCollectionDep,
     ListCollectionsDep,
     ListDocumentsDep,
+    SearchCollectionDep,
     UploadDocumentDep,
 )
 from app.presentation.api.errors import PROBLEM_RESPONSES
@@ -30,6 +32,7 @@ from app.presentation.api.schemas.collections import CollectionResponse, CreateC
 from app.presentation.api.schemas.common import Page, page_params
 from app.presentation.api.schemas.documents import DocumentResponse
 from app.presentation.api.schemas.jobs import IngestionJobResponse, UploadDocumentResponse
+from app.presentation.api.schemas.search import SearchRequest, SearchResponse
 
 router = APIRouter(prefix="/collections", tags=["collections"], responses=PROBLEM_RESPONSES)
 
@@ -126,3 +129,24 @@ async def upload_document(
         document=DocumentResponse.from_domain(uploaded.document),
         job=IngestionJobResponse.from_domain(uploaded.job),
     )
+
+
+@router.post("/{collection_id}/search")
+async def search(
+    collection_id: UUID, body: SearchRequest, use_case: SearchCollectionDep
+) -> SearchResponse:
+    """Retrieve the chunks most relevant to a query (no LLM involved).
+
+    Compare the modes on the same query: each hit shows its rank in the `vector`
+    and `keyword` result lists, so you can see why hybrid search ranks it where it does.
+    """
+    result = await use_case.execute(
+        SearchQuery(
+            collection_id=collection_id,
+            text=body.query,
+            mode=body.mode,
+            top_k=body.top_k,
+            candidates=body.candidates,
+        )
+    )
+    return SearchResponse.from_domain(result)

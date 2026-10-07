@@ -1,8 +1,8 @@
 """Admin command-line interface.
 
-uv run python -m app.presentation.cli api-key create --name dev
-uv run python -m app.presentation.cli api-key list
-uv run python -m app.presentation.cli api-key revoke <id>
+uv run rag-admin api-key create --name dev
+uv run rag-admin api-key list
+uv run rag-admin api-key revoke <id>
 """
 
 import argparse

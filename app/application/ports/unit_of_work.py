@@ -9,6 +9,7 @@ from collections.abc import Callable
 from types import TracebackType
 from typing import Self
 
+from app.application.ports.search import ChunkSearchIndex
 from app.domain.repositories import (
     ApiKeyRepository,
     ChunkRepository,
@@ -24,6 +25,7 @@ class UnitOfWork(ABC):
     chunks: ChunkRepository
     ingestion_jobs: IngestionJobRepository
     api_keys: ApiKeyRepository
+    search: ChunkSearchIndex  # read-only queries over chunks
 
     async def __aenter__(self) -> Self:
         return self

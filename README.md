@@ -68,8 +68,8 @@ curl -X POST localhost:8000/api/v1/collections \
   -H "Authorization: Bearer $RAG_KEY" -H "Content-Type: application/json" \
   -d '{"name": "kubernetes-docs", "description": "K8s notes"}'
 
-uv run python -m app.presentation.cli api-key list            # list keys
-uv run python -m app.presentation.cli api-key revoke <id>     # revoke a key
+uv run rag-admin api-key list            # list keys
+uv run rag-admin api-key revoke <id>     # revoke a key
 ```
 
 ### Ingest documents
@@ -87,6 +87,20 @@ Or upload your own (`.md`, `.txt`, `.pdf`):
 curl -X POST localhost:8000/api/v1/collections/<collection-id>/documents \
   -H "Authorization: Bearer $RAG_KEY" -F "file=@notes.md"
 # → follow the returned job: GET /api/v1/jobs/<job-id>
+```
+
+### Search
+
+```bash
+curl -X POST localhost:8000/api/v1/collections/<collection-id>/search \
+  -H "Authorization: Bearer $RAG_KEY" -H "Content-Type: application/json" \
+  -d '{"query": "Why does my filtered vector search return fewer rows?", "mode": "hybrid"}'
+```
+
+`mode` is `vector` (semantic), `keyword` (full-text) or `hybrid` (both, fused with Reciprocal Rank Fusion). Each hit shows its rank in both retrievers. To compare the modes side by side:
+
+```bash
+uv run python scripts/compare_search.py "your question"
 ```
 
 Errors use [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`).
@@ -120,8 +134,8 @@ How it works:
 | Command                                                     | What it does                                |
 | ----------------------------------------------------------- | ------------------------------------------- |
 | `make api-key name=dev`                                     | Create a key                                |
-| `uv run python -m app.presentation.cli api-key list`        | List keys (name, prefix, last used, status) |
-| `uv run python -m app.presentation.cli api-key revoke <id>` | Revoke a key, e.g. if it leaked             |
+| `uv run rag-admin api-key list`        | List keys (name, prefix, last used, status) |
+| `uv run rag-admin api-key revoke <id>` | Revoke a key, e.g. if it leaked             |
 
 Give each client its own key: one for you, one for a script, and so on. Then you can revoke one without breaking the others.
 

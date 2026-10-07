@@ -29,6 +29,7 @@ from app.application.use_cases.ingestion import (
     ProcessNextIngestionJob,
     UploadDocument,
 )
+from app.application.use_cases.retrieval import SearchCollection
 from app.application.use_cases.system.check_readiness import CheckReadiness
 from app.core.config import Settings
 from app.domain.value_objects import EmbeddingSpec
@@ -129,6 +130,10 @@ class Container:
 
     def delete_document(self) -> DeleteDocument:
         return DeleteDocument(self.unit_of_work, self.storage)
+
+    # --- Retrieval ---------------------------------------------------------
+    def search_collection(self) -> SearchCollection:
+        return SearchCollection(self.unit_of_work, self.embedder)
 
     # --- API keys ----------------------------------------------------------
     def authenticate_api_key(self) -> AuthenticateApiKey:
