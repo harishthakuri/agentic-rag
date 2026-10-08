@@ -210,7 +210,7 @@ API keys are random 256-bit secrets, shown once at creation (`make api-key name=
 
 ## Design decisions and lessons learned
 
-The full reasoning is in the [implementation plan](docs/IMPLEMENTATION_PLAN.md). The highlights:
+The full reasoning is in the [implementation plan](docs/IMPLEMENTATION_PLAN.md); reranking has [its own explainer](docs/RERANKING.md). The highlights:
 
 | Decision | Why |
 |---|---|

@@ -371,6 +371,8 @@ class Reranker(Protocol):  # application/ports
 - **Quality on the sample corpus** (`scripts/compare_search.py`): reranking fixed the case hybrid search got wrong ("What does a 304 response mean?": ETag moved from #2 to #1, and "Freshness" dropped to grade 0). It kept the correct #1 everywhere else. Grades also separate clearly relevant (3) from irrelevant (0) chunks, a signal `/ask` can use to drop useless context.
 - **Latency is the cost**: about 3.4 s for 10 candidates (one batch) and 7.8 s for 20, against about 0.2 s for hybrid search alone (`gpt-oss:20b`, `reasoning_effort=low`, M1 Max). Ollama processes the batches sequentially, so concurrency doesn't help locally. `RERANK_DEPTH` defaults to 10. A cross-encoder (phase 9) should bring this down to about 0.1–0.3 s.
 
+> The detailed explainer for both rerankers, including how the planned sentence-transformers cross-encoder works, is in [RERANKING.md](RERANKING.md).
+
 ### 5.6 How we will judge it
 
 The eval harness (§7) reports **recall@k, MRR and nDCG@k** for: `vector` → `hybrid` → `hybrid + LLM rerank` → later `hybrid + cross-encoder`. A reranker is only worth its latency if it measurably moves those numbers on our dataset. That comparison table goes in the README.
