@@ -13,8 +13,9 @@ htmlcov/
 .env.*
 !.env.example
 
-# Local data
-data/
+# Local data (uploads, ...), except the benchmark corpus: see data/benchmark/docs/ATTRIBUTION.md
+/data/*
+!/data/benchmark/
 evals/results/
 
 # OS / editors

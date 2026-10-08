@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install run worker api-key ingest-samples eval eval-retrieval up down logs fmt lint typecheck arch test test-integration check migrate migration downgrade
+.PHONY: help install run worker api-key ingest-samples ingest-benchmark benchmark-docs eval eval-retrieval up down logs fmt lint typecheck arch test test-integration check migrate migration downgrade
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -19,6 +19,13 @@ api-key: ## Issue an API key: make api-key name=dev
 
 ingest-samples: ## Upload sample_data/ (needs RAG_API_KEY, make run and make worker)
 	uv run python scripts/ingest_samples.py
+
+ingest-benchmark: ## Upload data/benchmark/docs into the 'benchmark' collection (needs RAG_API_KEY)
+	uv run python scripts/ingest_samples.py --dir data/benchmark/docs --collection benchmark \
+		--description "Benchmark corpus: Kubernetes, PostgreSQL, MDN HTTP docs, pgvector"
+
+benchmark-docs: ## Download the benchmark corpus (third-party docs) into data/benchmark/docs
+	uv run python scripts/download_benchmark_docs.py
 
 eval: ## Evaluate retrieval and answers (slow: many LLM calls; see evals/__main__.py)
 	uv run python -m evals

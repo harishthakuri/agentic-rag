@@ -2,6 +2,11 @@
 
     RAG_API_KEY=arag_... uv run python scripts/ingest_samples.py [--collection samples]
 
+Any folder works (subfolders included); the collection is created if needed:
+
+    RAG_API_KEY=arag_... uv run python scripts/ingest_samples.py \
+        --dir data/benchmark/docs --collection benchmark
+
 Requires the API (`make run`) and the worker (`make worker`) to be running.
 """
 
@@ -15,11 +20,14 @@ import httpx
 
 SAMPLE_DIR = Path(__file__).resolve().parents[1] / "sample_data"
 SUPPORTED = {".md", ".markdown", ".txt", ".pdf"}
+SKIP = {"ATTRIBUTION.md", "README.md"}  # credits and notes, not documents
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--collection", default="samples")
+    parser.add_argument("--dir", type=Path, default=SAMPLE_DIR, help="folder to upload")
+    parser.add_argument("--description", default="Sample documents")
     parser.add_argument("--base-url", default="http://localhost:8000")
     parser.add_argument("--timeout", type=float, default=300, help="seconds to wait for ingestion")
     args = parser.parse_args()
@@ -33,8 +41,12 @@ def main() -> None:
         headers={"Authorization": f"Bearer {api_key}"},
         timeout=60,
     ) as client:
-        collection_id = _ensure_collection(client, args.collection)
-        files = sorted(p for p in SAMPLE_DIR.iterdir() if p.suffix in SUPPORTED)
+        collection_id = _ensure_collection(client, args.collection, args.description)
+        files = sorted(
+            p for p in args.dir.rglob("*") if p.suffix in SUPPORTED and p.name not in SKIP
+        )
+        if not files:
+            sys.exit(f"No documents found in {args.dir}")
         for path in files:
             response = client.post(
                 f"/collections/{collection_id}/documents",
@@ -48,8 +60,8 @@ def main() -> None:
         _wait_until_ready(client, collection_id, args.timeout)
 
 
-def _ensure_collection(client: httpx.Client, name: str) -> str:
-    response = client.post("/collections", json={"name": name, "description": "Sample documents"})
+def _ensure_collection(client: httpx.Client, name: str, description: str) -> str:
+    response = client.post("/collections", json={"name": name, "description": description})
     if response.status_code == 409:
         for collection in client.get("/collections", params={"limit": 100}).json()["items"]:
             if collection["name"] == name:
