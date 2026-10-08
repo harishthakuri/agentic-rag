@@ -1,0 +1,1351 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>RAG explained · Agentic RAG</title>
+<style>
+@page { size: A4 landscape; margin: 0; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: #0f172a;
+       -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+svg { flex-shrink: 0; }
+.page { position: relative; width: 1123px; height: 794px; overflow: hidden; page-break-after: always; padding: 26px 40px 46px;
+        display: flex; flex-direction: column; gap: 16px; }
+header h1 { margin: 0; font-size: 26px; letter-spacing: -0.01em; }
+header p { margin: 6px 0 0; color: #475569; font-size: 14px; }
+footer { position: absolute; left: 40px; right: 40px; bottom: 18px; display: flex; justify-content: space-between; font-size: 10.5px; color: #94a3b8; }
+
+/* page 1 */
+.compare { display: grid; grid-template-columns: 1fr 1.25fr; gap: 20px; flex: 1; }
+.panel { border-radius: 14px; padding: 16px 18px; border: 2px solid; display: flex; flex-direction: column; gap: 12px; }
+.panel.bad { border-color: #b91c1c55; background: #fef2f2; }
+.panel.good { border-color: #15803d66; background: #f0fdf4; }
+.panel-title { display: flex; gap: 8px; align-items: center; font-weight: 700; font-size: 17px; }
+.convo { display: flex; flex-direction: column; gap: 8px; }
+.q, .a { display: flex; gap: 9px; align-items: flex-start; padding: 12px 14px; border-radius: 10px; font-size: 15px; background: #fff; border: 1px solid #e2e8f0; }
+.a { border-color: #7c3aed44; }
+.points { list-style: none; margin: auto 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
+.points li { display: flex; gap: 7px; align-items: flex-start; line-height: 1.4; }
+.rag-steps { display: flex; flex-direction: column; gap: 10px; }
+.rag-step { display: flex; gap: 14px; align-items: flex-start; background: #fff; border-radius: 10px; padding: 12px 14px; border: 1px solid #e2e8f0; }
+.rag-step > div > b { display: block; font-size: 15px; }
+.rag-step > div > span { font-size: 13.5px; color: #334155; line-height: 1.45; }
+.letter { width: 40px; height: 40px; border-radius: 10px; color: #fff; font-weight: 800; font-size: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.found { margin-top: 7px; font-size: 12.5px; color: #166534; background: #f0fdf4; border: 1px dashed #15803d66; border-radius: 7px; padding: 5px 8px; display: flex; gap: 6px; align-items: flex-start; }
+.rag-step .a { margin-top: 6px; }
+.cite { display: inline-block; background: #ede9fe; color: #6d28d9; font-weight: 700; font-size: 10.5px; border-radius: 4px; padding: 0 5px; }
+.knows { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
+.knows-title { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #64748b; }
+.know { display: flex; gap: 12px; align-items: center; border-radius: 8px; padding: 9px 11px; }
+.know > div { flex: 1; }
+.know b { display: block; font-size: 14px; }
+.know span { font-size: 13px; color: #334155; line-height: 1.4; }
+.know span b { display: inline; font-size: inherit; color: #b91c1c; }
+.know.yes { background: #f5f3ff; }
+.know.no { background: #fef2f2; border: 1px dashed #b91c1c66; }
+.sources-line { margin-top: 7px; font-size: 12.5px; color: #475569; display: flex; gap: 6px; align-items: center; }
+.analogy { display: flex; gap: 16px; align-items: center; background: #eff6ff; border: 1px solid #2563eb33; border-radius: 12px; padding: 14px 20px; font-size: 14px; line-height: 1.45; }
+.analogy p { margin: 0; }
+
+/* page 2 */
+.pipeline { display: grid; grid-template-columns: 1fr 22px 1fr 22px 1fr 22px 1fr; align-items: stretch; }
+.flow-arrow { display: flex; align-items: center; justify-content: center; font-size: 22px; color: #94a3b8; }
+.block { border: 2px solid #e2e8f0; border-radius: 12px; padding: 11px 13px; font-size: 11.8px; line-height: 1.42; background: #fff; }
+.block.ai { border-color: #7c3aed; box-shadow: 0 0 0 4px #7c3aed14; }
+.block p { margin: 6px 0 0; color: #1e293b; }
+.block .why { color: #64748b; font-size: 11.2px; }
+.block-head { display: flex; gap: 8px; align-items: center; font-size: 13.5px; }
+.who { display: inline-flex; gap: 5px; align-items: center; margin-top: 6px; font-size: 10.5px; font-weight: 700; border-radius: 6px; padding: 2px 7px; }
+.who.code { color: #1d4ed8; background: #eff6ff; border: 1px solid #2563eb44; }
+.who.ai { color: #6d28d9; background: #f5f3ff; border: 1px solid #7c3aed55; }
+.who.db { color: #166534; background: #f0fdf4; border: 1px solid #15803d44; }
+.mini-doc { margin: 8px 0 2px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; }
+.mini-doc div { height: 5px; border-radius: 3px; background: #cbd5e1; }
+.mini-doc .cut { height: 0; border-top: 2px dashed #2563eb; background: none; margin: 2px -8px; }
+.numbers { margin-top: 8px; font-family: ui-monospace, Menlo, monospace; font-size: 11px; background: #f5f3ff; border-radius: 7px; padding: 6px 8px; color: #5b21b6; }
+.numbers span { display: block; font-family: -apple-system, Helvetica, sans-serif; font-size: 10.5px; color: #7c3aed; margin-top: 2px; }
+.lower { display: grid; grid-template-columns: 1.25fr 1fr; gap: 20px; flex: 1; min-height: 0; }
+.map-box, .names-box { border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 16px; display: flex; flex-direction: column; min-height: 0; }
+.box-title { display: flex; gap: 7px; align-items: center; font-weight: 700; font-size: 13.5px; margin-bottom: 6px; }
+.map { flex: 1; min-height: 0; background: #fafafa; border-radius: 8px; }
+.map text { paint-order: stroke; stroke: #fafafa; stroke-width: 4px; stroke-linejoin: round; }
+.map .lbl { font-size: 11px; fill: #334155; }
+.map .grp { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.map .q-lbl { font-size: 11px; fill: #6d28d9; font-weight: 600; }
+.map .near { font-size: 10px; fill: #7c3aed; font-style: italic; }
+.caption { margin: 8px 0 0; font-size: 11.5px; line-height: 1.42; color: #334155; }
+.names { border-collapse: collapse; font-size: 11.8px; line-height: 1.35; }
+.names th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: #64748b; padding: 0 6px 5px; border-bottom: 2px solid #e2e8f0; }
+.names td { padding: 6px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+.names td:first-child { white-space: nowrap; }
+
+/* page 3 */
+.models { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.model { display: flex; gap: 14px; border: 2px solid #7c3aed; border-radius: 12px; padding: 12px 16px; background: #fdfcff; }
+.model-icon { width: 54px; height: 54px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.model-name { font-weight: 700; font-size: 14.5px; color: #4c1d95; }
+.role { font-weight: 500; color: #7c3aed; font-size: 12.5px; }
+.model p { margin: 5px 0 6px; font-size: 12.2px; line-height: 1.42; }
+.model-tag { display: inline-flex; gap: 5px; align-items: center; font-size: 10.5px; font-weight: 600; color: #5b21b6; border: 1px solid #7c3aed55; border-radius: 6px; padding: 2px 7px; }
+.cmp { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 11.8px; line-height: 1.38; }
+.cmp th, .cmp td { padding: 7px 10px; border-bottom: 1px solid #e2e8f0; vertical-align: top; text-align: left; }
+.cmp tbody th { width: 175px; color: #475569; font-weight: 600; }
+.cmp thead th { border-bottom: 2px solid #cbd5e1; vertical-align: bottom; }
+.cmp .ours { background: #f8f7ff; }
+.col-title { font-size: 13.5px; font-weight: 700; margin-bottom: 6px; }
+.flow { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
+.chip { display: inline-flex; gap: 3px; align-items: center; font-size: 10.3px; font-weight: 600; border: 1px solid; border-radius: 999px; padding: 1px 7px 1px 4px; color: #1e293b; }
+.arr, .loop { color: #94a3b8; font-size: 12px; }
+.xn { font-size: 10.3px; font-weight: 700; color: #7c3aed; }
+.notes { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.notes.three { grid-template-columns: 1fr 1fr 1.25fr; }
+.note { display: flex; gap: 10px; align-items: flex-start; border: 1px solid #e2e8f0; border-radius: 10px; padding: 9px 13px; font-size: 12px; line-height: 1.42; }
+.note p { margin: 0; }
+
+.p4 { gap: 9px; }
+.s4-question { display: flex; gap: 9px; align-items: flex-start; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 7px 12px; font-size: 12px; line-height: 1.4; }
+.s4-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.s4-col { border: 2px solid; border-radius: 12px; padding: 9px 12px; display: flex; flex-direction: column; gap: 5px; }
+.s4-col.ask { border-color: #2563eb66; background: #f8faff; }
+.s4-col.agent { border-color: #7c3aed; background: #fdfcff; }
+.s4-head { display: flex; gap: 10px; align-items: center; margin-bottom: 2px; }
+.s4-head > div > b { display: block; font-size: 16px; }
+.s4-head span { font-size: 12px; color: #475569; }
+.s4-step { display: flex; gap: 8px; align-items: center; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 3px 9px; }
+.s4-n { width: 20px; height: 20px; border-radius: 10px; background: #334155; color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.s4-txt { flex: 1; font-size: 11px; line-height: 1.28; }
+.s4-txt b { display: block; font-size: 12px; }
+.s4-txt span { color: #334155; }
+.s4-who { font-size: 9.5px; font-weight: 700; border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+.s4-who.ai { color: #6d28d9; background: #f5f3ff; }
+.s4-who.db { color: #166534; background: #f0fdf4; }
+.s4-who.code { color: #1d4ed8; background: #eff6ff; }
+.s4-loop { position: relative; border: 2px dashed #7c3aed; border-radius: 10px; padding: 14px 7px 6px; display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+.s4-loop-badge { position: absolute; top: -11px; left: 12px; display: flex; gap: 4px; align-items: center; background: #7c3aed; color: #fff; font-size: 10.5px; font-weight: 700; border-radius: 999px; padding: 2px 9px; }
+.s4-loop-badge svg { stroke: #fff; }
+.s4-outcome { margin-top: auto; font-size: 11.3px; line-height: 1.4; color: #1e293b; background: #fff; border-radius: 8px; border: 1px solid #2563eb33; padding: 7px 10px; }
+.s4-stats, .s4-trace { margin-top: 5px; }
+.s4-stats { display: flex; gap: 6px; flex-wrap: wrap; }
+.s4-stats span { font-size: 10.5px; font-weight: 700; color: #1d4ed8; background: #eff6ff; border-radius: 5px; padding: 1px 7px; }
+.s4-trace { font-size: 10.5px; line-height: 1.3; background: #fff; border: 1px solid #7c3aed44; border-radius: 8px; padding: 6px 10px; display: flex; flex-direction: column; gap: 3px; }
+.s4-trace > div { display: flex; gap: 6px; align-items: flex-start; }
+.s4-trace i { color: #64748b; }
+.s4-trace-title { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #6d28d9; }
+.s4-bottom { display: grid; grid-template-columns: 1.15fr 1.1fr 0.9fr; gap: 14px; }
+.s4-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 12px; font-size: 10.9px; line-height: 1.36; }
+.s4-box h2 { display: flex; gap: 6px; align-items: center; font-size: 12.5px; margin: 0 0 4px; }
+.s4-box p { margin: 0; }
+.s4-guide, .s4-trade { width: 100%; border-collapse: collapse; font-size: 10.8px; }
+.s4-guide td, .s4-trade td, .s4-trade th { padding: 3px 4px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+.s4-guide i { color: #64748b; }
+.pick { font-weight: 700; text-align: center; width: 48px; border-radius: 5px; }
+.pick.ask { color: #1d4ed8; }
+.pick.agent { color: #6d28d9; }
+.s4-trade th { text-align: left; font-size: 10px; color: #64748b; }
+.s4-note { margin-top: 4px !important; font-size: 9.8px; color: #64748b; }
+</style></head><body>
+<section class="page">
+  <header>
+    <h1>RAG, explained</h1>
+    <p><b>Retrieval-Augmented Generation:</b> how an AI answers from <b>your documents</b> instead of from memory.</p>
+  </header>
+
+  <div class="compare">
+    <div class="panel bad">
+      <div class="panel-title"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="20"
+  height="20"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#b91c1c"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m15 9-6 6" />
+  <path d="m9 9 6 6" />
+</svg> Without RAG: the AI answers from memory</div>
+      <div class="convo">
+        <div class="q"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#475569"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+  <circle cx="12" cy="7" r="4" />
+</svg><span>“How many vacation days do new employees get?”</span></div>
+        <div class="a"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 8V4H8" />
+  <rect width="16" height="12" x="4" y="8" rx="2" />
+  <path d="M2 14h2" />
+  <path d="M20 14h2" />
+  <path d="M15 13v2" />
+  <path d="M9 13v2" />
+</svg><span>“Typically 20 days.”</span></div>
+      </div>
+      <div class="knows">
+        <div class="knows-title">What the AI actually knows</div>
+        <div class="know yes"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="26"
+  height="26"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 18V5" />
+  <path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4" />
+  <path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5" />
+  <path d="M17.997 5.125a4 4 0 0 1 2.526 5.77" />
+  <path d="M18 18a4 4 0 0 0 2-7.464" />
+  <path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517" />
+  <path d="M6 18a4 4 0 0 1-2-7.464" />
+  <path d="M6.003 5.125a4 4 0 0 0-2.526 5.77" />
+</svg><div><b>What it learned in training</b><span>Public web pages, books and code, up to a fixed cut-off date.</span></div></div>
+        <div class="know no"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="26"
+  height="26"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#b91c1c"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="8" height="18" x="3" y="3" rx="1" />
+  <path d="M7 3v18" />
+  <path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z" />
+</svg><div><b>Your company's documents</b><span>Handbook, policies, contracts, internal notes: <b>never seen</b>.</span></div><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="20"
+  height="20"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#b91c1c"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m15 9-6 6" />
+  <path d="m9 9 6 6" />
+</svg></div>
+      </div>
+      <ul class="points">
+        <li><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="15"
+  height="15"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#b91c1c"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+  <path d="M12 9v4" />
+  <path d="M12 17h.01" />
+</svg> <span>It has never read <b>your</b> handbook, so it guesses, confidently.</span></li>
+        <li><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="15"
+  height="15"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#b91c1c"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+  <path d="M12 9v4" />
+  <path d="M12 17h.01" />
+</svg> <span>It can't show <b>where</b> the answer came from.</span></li>
+        <li><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="15"
+  height="15"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#b91c1c"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+  <path d="M12 9v4" />
+  <path d="M12 17h.01" />
+</svg> <span>Its knowledge stops at the date it was trained.</span></li>
+      </ul>
+    </div>
+
+    <div class="panel good">
+      <div class="panel-title"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="20"
+  height="20"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#15803d"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m9 12 2 2 4-4" />
+</svg> With RAG: the AI looks it up first</div>
+      <div class="rag-steps">
+        <div class="rag-step">
+          <div class="letter" style="background:#2563eb">R</div>
+          <div><b>Retrieve</b><span>Search your documents for passages about the question.</span>
+            <div class="found"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="14"
+  height="14"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#15803d"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M10 2v8l3-3 3 3V2" />
+  <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" />
+</svg> Employee Handbook › Leave › “New employees receive 15 days in their first year.”</div></div>
+        </div>
+        <div class="rag-step">
+          <div class="letter" style="background:#15803d">A</div>
+          <div><b>Augment</b><span>Hand the AI the question <i>plus</i> the passages found, with the instruction: use only these.</span></div>
+        </div>
+        <div class="rag-step">
+          <div class="letter" style="background:#7c3aed">G</div>
+          <div><b>Generate</b><span>The AI writes the answer and cites its source.</span>
+            <div class="a"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 8V4H8" />
+  <rect width="16" height="12" x="4" y="8" rx="2" />
+  <path d="M2 14h2" />
+  <path d="M20 14h2" />
+  <path d="M15 13v2" />
+  <path d="M9 13v2" />
+</svg><span>“New employees get <b>15 days</b> in their first year <span class="cite">1</span>.”</span></div>
+            <div class="sources-line">Sources: <span class="cite">1</span> Employee Handbook › Leave › New employees</div></div>
+        </div>
+      </div>
+      <ul class="points">
+        <li><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="15"
+  height="15"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#15803d"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m9 12 2 2 4-4" />
+</svg> <span>Answers come from your own, current documents.</span></li>
+        <li><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="15"
+  height="15"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#15803d"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m9 12 2 2 4-4" />
+</svg> <span>Every claim links to its source, so anyone can check it.</span></li>
+        <li><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="15"
+  height="15"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#15803d"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m9 12 2 2 4-4" />
+</svg> <span>If the documents don't say, it answers “I couldn't find this”.</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="analogy">
+    <svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="30"
+  height="30"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#2563eb"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z" />
+  <path d="M22 10v6" />
+  <path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5" />
+</svg>
+    <p><b>Think of an open-book exam.</b> The AI is a bright student who must answer by looking things up in the book you
+    gave it (your documents) and citing the page, rather than relying on what it half-remembers. Add a new document,
+    and the “book” is up to date immediately. No retraining needed.</p>
+  </div>
+
+  <footer><span>Agentic RAG · RAG explained</span><span>1 / 3</span></footer>
+</section>
+
+<section class="page">
+  <header>
+    <h1>The building blocks</h1>
+    <p>How documents are prepared so the right passage can be found in a fraction of a second.</p>
+  </header>
+
+  <div class="pipeline">
+    <div class="block">
+      <div class="block-head" style="color:#2563eb"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="22"
+  height="22"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#2563eb"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="6" cy="6" r="3" />
+  <path d="M8.12 8.12 12 12" />
+  <path d="M20 4 8.12 15.88" />
+  <circle cx="6" cy="18" r="3" />
+  <path d="M14.8 14.8 20 20" />
+</svg><b>1 · Chunking</b></div>
+      <div class="who code"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="13"
+  height="13"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#2563eb"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M11 10.27 7 3.34" />
+  <path d="m11 13.73-4 6.93" />
+  <path d="M12 22v-2" />
+  <path d="M12 2v2" />
+  <path d="M14 12h8" />
+  <path d="m17 20.66-1-1.73" />
+  <path d="m17 3.34-1 1.73" />
+  <path d="M2 12h2" />
+  <path d="m20.66 17-1.73-1" />
+  <path d="m20.66 7-1.73 1" />
+  <path d="m3.34 17 1.73-1" />
+  <path d="m3.34 7 1.73 1" />
+  <circle cx="12" cy="12" r="2" />
+  <circle cx="12" cy="12" r="8" />
+</svg> Rules defined in our code, not AI</div>
+      <p>Each document is <b>cut into passages</b> of about half a page, at headings and paragraphs, never mid-sentence.</p>
+      <div class="mini-doc"><div></div><div></div><div class="cut"></div><div></div><div class="cut"></div><div></div></div>
+      <p class="why">Why: the AI should read the 3–5 relevant passages, not a 200-page manual, and each citation can point to the exact spot.</p>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="block ai">
+      <div class="block-head" style="color:#7c3aed"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="22"
+  height="22"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />
+  <path d="M20 2v4" />
+  <path d="M22 4h-4" />
+  <circle cx="4" cy="20" r="2" />
+</svg><b>2 · Embedding</b></div>
+      <div class="who ai"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="13"
+  height="13"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />
+  <path d="M20 2v4" />
+  <path d="M22 4h-4" />
+  <circle cx="4" cy="20" r="2" />
+</svg> Done by AI: the embedding model</div>
+      <p>An <b>embedding model</b> (AI) reads each passage and produces its <b>meaning fingerprint</b>: a list of numbers.</p>
+      <div class="numbers">[0.021, −0.134, 0.087, 0.310, …, 0.045]<span>1,024 numbers per passage</span></div>
+      <p class="why">Why: passages that <i>mean</i> the same thing get similar numbers, even when they use different words.</p>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="block">
+      <div class="block-head" style="color:#7c3aed"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="22"
+  height="22"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z" />
+  <path d="M15 5.764v15" />
+  <path d="M9 3.236v15" />
+</svg><b>3 · Vector</b></div>
+      <p>That list of numbers is a <b>vector</b>: a point on a “map of meaning”. Close points mean similar content.</p>
+      <p class="why">Why: “which passages answer this?” becomes a simple distance check that computers do very fast.</p>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="block">
+      <div class="block-head" style="color:#15803d"><svg width="22" height="22" fill="#336791" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M23.5594 14.7228a.5269.5269 0 0 0-.0563-.1191c-.139-.2632-.4768-.3418-1.0074-.2321-1.6533.3411-2.2935.1312-2.5256-.0191 1.342-2.0482 2.445-4.522 3.0411-6.8297.2714-1.0507.7982-3.5237.1222-4.7316a1.5641 1.5641 0 0 0-.1509-.235C21.6931.9086 19.8007.0248 17.5099.0005c-1.4947-.0158-2.7705.3461-3.1161.4794a9.449 9.449 0 0 0-.5159-.0816 8.044 8.044 0 0 0-1.3114-.1278c-1.1822-.0184-2.2038.2642-3.0498.8406-.8573-.3211-4.7888-1.645-7.2219.0788C.9359 2.1526.3086 3.8733.4302 6.3043c.0409.818.5069 3.334 1.2423 5.7436.4598 1.5065.9387 2.7019 1.4334 3.582.553.9942 1.1259 1.5933 1.7143 1.7895.4474.1491 1.1327.1441 1.8581-.7279.8012-.9635 1.5903-1.8258 1.9446-2.2069.4351.2355.9064.3625 1.39.3772a.0569.0569 0 0 0 .0004.0041 11.0312 11.0312 0 0 0-.2472.3054c-.3389.4302-.4094.5197-1.5002.7443-.3102.064-1.1344.2339-1.1464.8115-.0025.1224.0329.2309.0919.3268.2269.4231.9216.6097 1.015.6331 1.3345.3335 2.5044.092 3.3714-.6787-.017 2.231.0775 4.4174.3454 5.0874.2212.5529.7618 1.9045 2.4692 1.9043.2505 0 .5263-.0291.8296-.0941 1.7819-.3821 2.5557-1.1696 2.855-2.9059.1503-.8707.4016-2.8753.5388-4.1012.0169-.0703.0357-.1207.057-.1362.0007-.0005.0697-.0471.4272.0307a.3673.3673 0 0 0 .0443.0068l.2539.0223.0149.001c.8468.0384 1.9114-.1426 2.5312-.4308.6438-.2988 1.8057-1.0323 1.5951-1.6698zM2.371 11.8765c-.7435-2.4358-1.1779-4.8851-1.2123-5.5719-.1086-2.1714.4171-3.6829 1.5623-4.4927 1.8367-1.2986 4.8398-.5408 6.108-.13-.0032.0032-.0066.0061-.0098.0094-2.0238 2.044-1.9758 5.536-1.9708 5.7495-.0002.0823.0066.1989.0162.3593.0348.5873.0996 1.6804-.0735 2.9184-.1609 1.1504.1937 2.2764.9728 3.0892.0806.0841.1648.1631.2518.2374-.3468.3714-1.1004 1.1926-1.9025 2.1576-.5677.6825-.9597.5517-1.0886.5087-.3919-.1307-.813-.5871-1.2381-1.3223-.4796-.839-.9635-2.0317-1.4155-3.5126zm6.0072 5.0871c-.1711-.0428-.3271-.1132-.4322-.1772.0889-.0394.2374-.0902.4833-.1409 1.2833-.2641 1.4815-.4506 1.9143-1.0002.0992-.126.2116-.2687.3673-.4426a.3549.3549 0 0 0 .0737-.1298c.1708-.1513.2724-.1099.4369-.0417.156.0646.3078.26.3695.4752.0291.1016.0619.2945-.0452.4444-.9043 1.2658-2.2216 1.2494-3.1676 1.0128zm2.094-3.988-.0525.141c-.133.3566-.2567.6881-.3334 1.003-.6674-.0021-1.3168-.2872-1.8105-.8024-.6279-.6551-.9131-1.5664-.7825-2.5004.1828-1.3079.1153-2.4468.079-3.0586-.005-.0857-.0095-.1607-.0122-.2199.2957-.2621 1.6659-.9962 2.6429-.7724.4459.1022.7176.4057.8305.928.5846 2.7038.0774 3.8307-.3302 4.7363-.084.1866-.1633.3629-.2311.5454zm7.3637 4.5725c-.0169.1768-.0358.376-.0618.5959l-.146.4383a.3547.3547 0 0 0-.0182.1077c-.0059.4747-.054.6489-.115.8693-.0634.2292-.1353.4891-.1794 1.0575-.11 1.4143-.8782 2.2267-2.4172 2.5565-1.5155.3251-1.7843-.4968-2.0212-1.2217a6.5824 6.5824 0 0 0-.0769-.2266c-.2154-.5858-.1911-1.4119-.1574-2.5551.0165-.5612-.0249-1.9013-.3302-2.6462.0044-.2932.0106-.5909.019-.8918a.3529.3529 0 0 0-.0153-.1126 1.4927 1.4927 0 0 0-.0439-.208c-.1226-.4283-.4213-.7866-.7797-.9351-.1424-.059-.4038-.1672-.7178-.0869.067-.276.1831-.5875.309-.9249l.0529-.142c.0595-.16.134-.3257.213-.5012.4265-.9476 1.0106-2.2453.3766-5.1772-.2374-1.0981-1.0304-1.6343-2.2324-1.5098-.7207.0746-1.3799.3654-1.7088.5321a5.6716 5.6716 0 0 0-.1958.1041c.0918-1.1064.4386-3.1741 1.7357-4.4823a4.0306 4.0306 0 0 1 .3033-.276.3532.3532 0 0 0 .1447-.0644c.7524-.5706 1.6945-.8506 2.802-.8325.4091.0067.8017.0339 1.1742.081 1.939.3544 3.2439 1.4468 4.0359 2.3827.8143.9623 1.2552 1.9315 1.4312 2.4543-1.3232-.1346-2.2234.1268-2.6797.779-.9926 1.4189.543 4.1729 1.2811 5.4964.1353.2426.2522.4522.2889.5413.2403.5825.5515.9713.7787 1.2552.0696.087.1372.1714.1885.245-.4008.1155-1.1208.3825-1.0552 1.717-.0123.1563-.0423.4469-.0834.8148-.0461.2077-.0702.4603-.0994.7662zm.8905-1.6211c-.0405-.8316.2691-.9185.5967-1.0105a2.8566 2.8566 0 0 0 .135-.0406 1.202 1.202 0 0 0 .1342.103c.5703.3765 1.5823.4213 3.0068.1344-.2016.1769-.5189.3994-.9533.6011-.4098.1903-1.0957.333-1.7473.3636-.7197.0336-1.0859-.0807-1.1721-.151zm.5695-9.2712c-.0059.3508-.0542.6692-.1054 1.0017-.055.3576-.112.7274-.1264 1.1762-.0142.4368.0404.8909.0932 1.3301.1066.887.216 1.8003-.2075 2.7014a3.5272 3.5272 0 0 1-.1876-.3856c-.0527-.1276-.1669-.3326-.3251-.6162-.6156-1.1041-2.0574-3.6896-1.3193-4.7446.3795-.5427 1.3408-.5661 2.1781-.463zm.2284 7.0137a12.3762 12.3762 0 0 0-.0853-.1074l-.0355-.0444c.7262-1.1995.5842-2.3862.4578-3.4385-.0519-.4318-.1009-.8396-.0885-1.2226.0129-.4061.0666-.7543.1185-1.0911.0639-.415.1288-.8443.1109-1.3505.0134-.0531.0188-.1158.0118-.1902-.0457-.4855-.5999-1.938-1.7294-3.253-.6076-.7073-1.4896-1.4972-2.6889-2.0395.5251-.1066 1.2328-.2035 2.0244-.1859 2.0515.0456 3.6746.8135 4.8242 2.2824a.908.908 0 0 1 .0667.1002c.7231 1.3556-.2762 6.2751-2.9867 10.5405zm-8.8166-6.1162c-.025.1794-.3089.4225-.6211.4225a.5821.5821 0 0 1-.0809-.0056c-.1873-.026-.3765-.144-.5059-.3156-.0458-.0605-.1203-.178-.1055-.2844.0055-.0401.0261-.0985.0925-.1488.1182-.0894.3518-.1226.6096-.0867.3163.0441.6426.1938.6113.4186zm7.9305-.4114c.0111.0792-.049.201-.1531.3102-.0683.0717-.212.1961-.4079.2232a.5456.5456 0 0 1-.075.0052c-.2935 0-.5414-.2344-.5607-.3717-.024-.1765.2641-.3106.5611-.352.297-.0414.6111.0088.6356.1851z"/></svg><b>4 · Vector database</b></div>
+      <div class="who db"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="13"
+  height="13"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#15803d"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <ellipse cx="12" cy="5" rx="9" ry="3" />
+  <path d="M3 5V19A9 3 0 0 0 21 19V5" />
+  <path d="M3 12A9 3 0 0 0 21 12" />
+</svg> Done by the database (PostgreSQL)</div>
+      <p>Stores every passage with its vector, plus a <b>word index</b> for exact terms such as names and codes.</p>
+      <p class="why">Why: a special index finds the nearest vectors among millions without checking each one. We use PostgreSQL with pgvector.</p>
+    </div>
+  </div>
+
+  <div class="lower">
+    <div class="map-box">
+      <div class="box-title"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z" />
+  <path d="M15 5.764v15" />
+  <path d="M9 3.236v15" />
+</svg> The map of meaning, and how search uses it</div>
+      <div class="map"><svg viewBox="0 0 560 320" width="100%" height="100%"><circle cx="162" cy="134" r="64" fill="#7c3aed0d" stroke="#7c3aed" stroke-width="2" stroke-dasharray="5 4"/><text x="162" y="216" text-anchor="middle" class="near">nearest = most relevant</text><line x1="158" y1="142" x2="70" y2="246" stroke="#7c3aed" stroke-width="1.4"/><text x="20" y="262" class="q-lbl">Question: “How do I stop browsers</text><text x="20" y="278" class="q-lbl">using old JavaScript?”</text><text x="28" y="34" class="grp" fill="#0891b2">HTTP caching</text><text x="395" y="40" class="grp" fill="#ea580c">Kubernetes networking</text><text x="345" y="312" class="grp" fill="#16a34a">Vector indexes</text><circle cx="135" cy="92" r="7" fill="#0891b2"/><text x="146" y="96" class="lbl">Cache busting</text><circle cx="212" cy="132" r="7" fill="#0891b2"/><text x="223" y="136" class="lbl">ETag / 304</text><circle cx="118" cy="168" r="7" fill="#0891b2"/><text x="129" y="172" class="lbl">Freshness, max-age</text><circle cx="440" cy="80" r="7" fill="#ea580c"/><text x="451" y="84" class="lbl">Ingress</text><circle cx="488" cy="128" r="7" fill="#ea580c"/><text x="499" y="132" class="lbl">LoadBalancer</text><circle cx="405" cy="145" r="7" fill="#ea580c"/><text x="416" y="149" class="lbl">ClusterIP</text><circle cx="345" cy="228" r="7" fill="#16a34a"/><text x="356" y="232" class="lbl">HNSW index</text><circle cx="420" cy="255" r="7" fill="#16a34a"/><text x="431" y="259" class="lbl">IVFFlat index</text><circle cx="330" cy="280" r="7" fill="#16a34a"/><text x="341" y="284" class="lbl">Distance operators</text><polygon points="162,125 164.6,131.2 171,131.4 166,136 167.6,143 162,139 156.4,143 158,136 153,131.4 159.4,131.2" fill="#7c3aed"/></svg></div>
+      <p class="caption">The question gets a fingerprint too and lands on the map. The <b>closest passages</b> are the most relevant,
+      here “Cache busting”, even though the question never uses those words. <i>Simplified to 2 dimensions; real fingerprints have 1,024.</i></p>
+    </div>
+    <div class="names-box">
+      <div class="box-title"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#2563eb"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 7v14" />
+  <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" />
+</svg> Same idea, different names</div>
+      <table class="names">
+        <tr><th>You may hear</th><th>What it means</th></tr>
+        <tr><td><b>Chunk</b> · passage</td><td>A short piece of a document.</td></tr>
+        <tr><td><b>Meaning fingerprint</b></td><td>Our plain-language name for an embedding.</td></tr>
+        <tr><td><b>Embedding</b></td><td>The numbers an embedding model produces for a text.</td></tr>
+        <tr><td><b>Vector</b></td><td>That list of numbers, seen as a point you can measure distances to.</td></tr>
+        <tr><td><b>Vector database</b></td><td>A database that stores vectors and finds the nearest ones quickly.</td></tr>
+        <tr><td><b>Semantic search</b></td><td>Search by meaning (nearest vectors), not by matching words.</td></tr>
+        <tr><td><b>Hybrid search</b></td><td>Meaning search and exact-word search combined.</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <footer><span>Agentic RAG · RAG explained</span><span>2 / 3</span></footer>
+</section>
+
+<section class="page">
+  <header>
+    <h1>How many AI models does it take?</h1>
+    <p>Simple RAG and our Agentic RAG need the <b>same two AI models</b>. The difference is <b>what the chat model is asked to do</b>, and how often.</p>
+  </header>
+
+  <div class="models">
+    <div class="model">
+      <div class="model-icon" style="background:#7c3aed14"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="30"
+  height="30"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />
+  <path d="M20 2v4" />
+  <path d="M22 4h-4" />
+  <circle cx="4" cy="20" r="2" />
+</svg></div>
+      <div>
+        <div class="model-name">1 · Embedding model <span class="role">“the translator”</span></div>
+        <p>Turns text into meaning fingerprints. Used for <b>every passage at upload</b> and for <b>every question</b>.
+        It is small and fast (about 0.2 s per question).</p>
+        <div class="model-tag"><svg width="12" height="12" fill="#111" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M16.361 10.26a.894.894 0 0 0-.558.47l-.072.148.001.207c0 .193.004.217.059.353.076.193.152.312.291.448.24.238.51.3.872.205a.86.86 0 0 0 .517-.436.752.752 0 0 0 .08-.498c-.064-.453-.33-.782-.724-.897a1.06 1.06 0 0 0-.466 0zm-9.203.005c-.305.096-.533.32-.65.639a1.187 1.187 0 0 0-.06.52c.057.309.31.59.598.667.362.095.632.033.872-.205.14-.136.215-.255.291-.448.055-.136.059-.16.059-.353l.001-.207-.072-.148a.894.894 0 0 0-.565-.472 1.02 1.02 0 0 0-.474.007Zm4.184 2c-.131.071-.223.25-.195.383.031.143.157.288.353.407.105.063.112.072.117.136.004.038-.01.146-.029.243-.02.094-.036.194-.036.222.002.074.07.195.143.253.064.052.076.054.255.059.164.005.198.001.264-.03.169-.082.212-.234.15-.525-.052-.243-.042-.28.087-.355.137-.08.281-.219.324-.314a.365.365 0 0 0-.175-.48.394.394 0 0 0-.181-.033c-.126 0-.207.03-.355.124l-.085.053-.053-.032c-.219-.13-.259-.145-.391-.143a.396.396 0 0 0-.193.032zm.39-2.195c-.373.036-.475.05-.654.086-.291.06-.68.195-.951.328-.94.46-1.589 1.226-1.787 2.114-.04.176-.045.234-.045.53 0 .294.005.357.043.524.264 1.16 1.332 2.017 2.714 2.173.3.033 1.596.033 1.896 0 1.11-.125 2.064-.727 2.493-1.571.114-.226.169-.372.22-.602.039-.167.044-.23.044-.523 0-.297-.005-.355-.045-.531-.288-1.29-1.539-2.304-3.072-2.497a6.873 6.873 0 0 0-.855-.031zm.645.937a3.283 3.283 0 0 1 1.44.514c.223.148.537.458.671.662.166.251.26.508.303.82.02.143.01.251-.043.482-.08.345-.332.705-.672.957a3.115 3.115 0 0 1-.689.348c-.382.122-.632.144-1.525.138-.582-.006-.686-.01-.853-.042-.57-.107-1.022-.334-1.35-.68-.264-.28-.385-.535-.45-.946-.03-.192.025-.509.137-.776.136-.326.488-.73.836-.963.403-.269.934-.46 1.422-.512.187-.02.586-.02.773-.002zm-5.503-11a1.653 1.653 0 0 0-.683.298C5.617.74 5.173 1.666 4.985 2.819c-.07.436-.119 1.04-.119 1.503 0 .544.064 1.24.155 1.721.02.107.031.202.023.208a8.12 8.12 0 0 1-.187.152 5.324 5.324 0 0 0-.949 1.02 5.49 5.49 0 0 0-.94 2.339 6.625 6.625 0 0 0-.023 1.357c.091.78.325 1.438.727 2.04l.13.195-.037.064c-.269.452-.498 1.105-.605 1.732-.084.496-.095.629-.095 1.294 0 .67.009.803.088 1.266.095.555.288 1.143.503 1.534.071.128.243.393.264.407.007.003-.014.067-.046.141a7.405 7.405 0 0 0-.548 1.873c-.062.417-.071.552-.071.991 0 .56.031.832.148 1.279L3.42 24h1.478l-.05-.091c-.297-.552-.325-1.575-.068-2.597.117-.472.25-.819.498-1.296l.148-.29v-.177c0-.165-.003-.184-.057-.293a.915.915 0 0 0-.194-.25 1.74 1.74 0 0 1-.385-.543c-.424-.92-.506-2.286-.208-3.451.124-.486.329-.918.544-1.154a.787.787 0 0 0 .223-.531c0-.195-.07-.355-.224-.522a3.136 3.136 0 0 1-.817-1.729c-.14-.96.114-2.005.69-2.834.563-.814 1.353-1.336 2.237-1.475.199-.033.57-.028.776.01.226.04.367.028.512-.041.179-.085.268-.19.374-.431.093-.215.165-.333.36-.576.234-.29.46-.489.822-.729.413-.27.884-.467 1.352-.561.17-.035.25-.04.569-.04.319 0 .398.005.569.04a4.07 4.07 0 0 1 1.914.997c.117.109.398.457.488.602.034.057.095.177.132.267.105.241.195.346.374.43.14.068.286.082.503.045.343-.058.607-.053.943.016 1.144.23 2.14 1.173 2.581 2.437.385 1.108.276 2.267-.296 3.153-.097.15-.193.27-.333.419-.301.322-.301.722-.001 1.053.493.539.801 1.866.708 3.036-.062.772-.26 1.463-.533 1.854a2.096 2.096 0 0 1-.224.258.916.916 0 0 0-.194.25c-.054.109-.057.128-.057.293v.178l.148.29c.248.476.38.823.498 1.295.253 1.008.231 2.01-.059 2.581a.845.845 0 0 0-.044.098c0 .006.329.009.732.009h.73l.02-.074.036-.134c.019-.076.057-.3.088-.516.029-.217.029-1.016 0-1.258-.11-.875-.295-1.57-.597-2.226-.032-.074-.053-.138-.046-.141.008-.005.057-.074.108-.152.376-.569.607-1.284.724-2.228.031-.26.031-1.378 0-1.628-.083-.645-.182-1.082-.348-1.525a6.083 6.083 0 0 0-.329-.7l-.038-.064.131-.194c.402-.604.636-1.262.727-2.04a6.625 6.625 0 0 0-.024-1.358 5.512 5.512 0 0 0-.939-2.339 5.325 5.325 0 0 0-.95-1.02 8.097 8.097 0 0 1-.186-.152.692.692 0 0 1 .023-.208c.208-1.087.201-2.443-.017-3.503-.19-.924-.535-1.658-.98-2.082-.354-.338-.716-.482-1.15-.455-.996.059-1.8 1.205-2.116 3.01a6.805 6.805 0 0 0-.097.726c0 .036-.007.066-.015.066a.96.96 0 0 1-.149-.078A4.857 4.857 0 0 0 12 3.03c-.832 0-1.687.243-2.456.698a.958.958 0 0 1-.148.078c-.008 0-.015-.03-.015-.066a6.71 6.71 0 0 0-.097-.725C8.997 1.392 8.337.319 7.46.048a2.096 2.096 0 0 0-.585-.041Zm.293 1.402c.248.197.523.759.682 1.388.03.113.06.244.069.292.007.047.026.152.041.233.067.365.098.76.102 1.24l.002.475-.12.175-.118.178h-.278c-.324 0-.646.041-.954.124l-.238.06c-.033.007-.038-.003-.057-.144a8.438 8.438 0 0 1 .016-2.323c.124-.788.413-1.501.696-1.711.067-.05.079-.049.157.013zm9.825-.012c.17.126.358.46.498.888.28.854.36 2.028.212 3.145-.019.14-.024.151-.057.144l-.238-.06a3.693 3.693 0 0 0-.954-.124h-.278l-.119-.178-.119-.175.002-.474c.004-.669.066-1.19.214-1.772.157-.623.434-1.185.68-1.382.078-.062.09-.063.159-.012z"/></svg> qwen3-embedding:8b · runs on our machine</div>
+      </div>
+    </div>
+    <div class="model">
+      <div class="model-icon" style="background:#7c3aed14"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="30"
+  height="30"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 8V4H8" />
+  <rect width="16" height="12" x="4" y="8" rx="2" />
+  <path d="M2 14h2" />
+  <path d="M20 14h2" />
+  <path d="M15 13v2" />
+  <path d="M9 13v2" />
+</svg></div>
+      <div>
+        <div class="model-name">2 · Chat model <span class="role">“the reader and writer”</span></div>
+        <p>Reads and writes language. In simple RAG it only <b>writes answers</b>. In Agentic RAG it also <b>reviews</b> the
+        passages found and <b>plans</b> which searches to run. This is the larger, slower model.</p>
+        <div class="model-tag"><svg width="12" height="12" fill="#111" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M16.361 10.26a.894.894 0 0 0-.558.47l-.072.148.001.207c0 .193.004.217.059.353.076.193.152.312.291.448.24.238.51.3.872.205a.86.86 0 0 0 .517-.436.752.752 0 0 0 .08-.498c-.064-.453-.33-.782-.724-.897a1.06 1.06 0 0 0-.466 0zm-9.203.005c-.305.096-.533.32-.65.639a1.187 1.187 0 0 0-.06.52c.057.309.31.59.598.667.362.095.632.033.872-.205.14-.136.215-.255.291-.448.055-.136.059-.16.059-.353l.001-.207-.072-.148a.894.894 0 0 0-.565-.472 1.02 1.02 0 0 0-.474.007Zm4.184 2c-.131.071-.223.25-.195.383.031.143.157.288.353.407.105.063.112.072.117.136.004.038-.01.146-.029.243-.02.094-.036.194-.036.222.002.074.07.195.143.253.064.052.076.054.255.059.164.005.198.001.264-.03.169-.082.212-.234.15-.525-.052-.243-.042-.28.087-.355.137-.08.281-.219.324-.314a.365.365 0 0 0-.175-.48.394.394 0 0 0-.181-.033c-.126 0-.207.03-.355.124l-.085.053-.053-.032c-.219-.13-.259-.145-.391-.143a.396.396 0 0 0-.193.032zm.39-2.195c-.373.036-.475.05-.654.086-.291.06-.68.195-.951.328-.94.46-1.589 1.226-1.787 2.114-.04.176-.045.234-.045.53 0 .294.005.357.043.524.264 1.16 1.332 2.017 2.714 2.173.3.033 1.596.033 1.896 0 1.11-.125 2.064-.727 2.493-1.571.114-.226.169-.372.22-.602.039-.167.044-.23.044-.523 0-.297-.005-.355-.045-.531-.288-1.29-1.539-2.304-3.072-2.497a6.873 6.873 0 0 0-.855-.031zm.645.937a3.283 3.283 0 0 1 1.44.514c.223.148.537.458.671.662.166.251.26.508.303.82.02.143.01.251-.043.482-.08.345-.332.705-.672.957a3.115 3.115 0 0 1-.689.348c-.382.122-.632.144-1.525.138-.582-.006-.686-.01-.853-.042-.57-.107-1.022-.334-1.35-.68-.264-.28-.385-.535-.45-.946-.03-.192.025-.509.137-.776.136-.326.488-.73.836-.963.403-.269.934-.46 1.422-.512.187-.02.586-.02.773-.002zm-5.503-11a1.653 1.653 0 0 0-.683.298C5.617.74 5.173 1.666 4.985 2.819c-.07.436-.119 1.04-.119 1.503 0 .544.064 1.24.155 1.721.02.107.031.202.023.208a8.12 8.12 0 0 1-.187.152 5.324 5.324 0 0 0-.949 1.02 5.49 5.49 0 0 0-.94 2.339 6.625 6.625 0 0 0-.023 1.357c.091.78.325 1.438.727 2.04l.13.195-.037.064c-.269.452-.498 1.105-.605 1.732-.084.496-.095.629-.095 1.294 0 .67.009.803.088 1.266.095.555.288 1.143.503 1.534.071.128.243.393.264.407.007.003-.014.067-.046.141a7.405 7.405 0 0 0-.548 1.873c-.062.417-.071.552-.071.991 0 .56.031.832.148 1.279L3.42 24h1.478l-.05-.091c-.297-.552-.325-1.575-.068-2.597.117-.472.25-.819.498-1.296l.148-.29v-.177c0-.165-.003-.184-.057-.293a.915.915 0 0 0-.194-.25 1.74 1.74 0 0 1-.385-.543c-.424-.92-.506-2.286-.208-3.451.124-.486.329-.918.544-1.154a.787.787 0 0 0 .223-.531c0-.195-.07-.355-.224-.522a3.136 3.136 0 0 1-.817-1.729c-.14-.96.114-2.005.69-2.834.563-.814 1.353-1.336 2.237-1.475.199-.033.57-.028.776.01.226.04.367.028.512-.041.179-.085.268-.19.374-.431.093-.215.165-.333.36-.576.234-.29.46-.489.822-.729.413-.27.884-.467 1.352-.561.17-.035.25-.04.569-.04.319 0 .398.005.569.04a4.07 4.07 0 0 1 1.914.997c.117.109.398.457.488.602.034.057.095.177.132.267.105.241.195.346.374.43.14.068.286.082.503.045.343-.058.607-.053.943.016 1.144.23 2.14 1.173 2.581 2.437.385 1.108.276 2.267-.296 3.153-.097.15-.193.27-.333.419-.301.322-.301.722-.001 1.053.493.539.801 1.866.708 3.036-.062.772-.26 1.463-.533 1.854a2.096 2.096 0 0 1-.224.258.916.916 0 0 0-.194.25c-.054.109-.057.128-.057.293v.178l.148.29c.248.476.38.823.498 1.295.253 1.008.231 2.01-.059 2.581a.845.845 0 0 0-.044.098c0 .006.329.009.732.009h.73l.02-.074.036-.134c.019-.076.057-.3.088-.516.029-.217.029-1.016 0-1.258-.11-.875-.295-1.57-.597-2.226-.032-.074-.053-.138-.046-.141.008-.005.057-.074.108-.152.376-.569.607-1.284.724-2.228.031-.26.031-1.378 0-1.628-.083-.645-.182-1.082-.348-1.525a6.083 6.083 0 0 0-.329-.7l-.038-.064.131-.194c.402-.604.636-1.262.727-2.04a6.625 6.625 0 0 0-.024-1.358 5.512 5.512 0 0 0-.939-2.339 5.325 5.325 0 0 0-.95-1.02 8.097 8.097 0 0 1-.186-.152.692.692 0 0 1 .023-.208c.208-1.087.201-2.443-.017-3.503-.19-.924-.535-1.658-.98-2.082-.354-.338-.716-.482-1.15-.455-.996.059-1.8 1.205-2.116 3.01a6.805 6.805 0 0 0-.097.726c0 .036-.007.066-.015.066a.96.96 0 0 1-.149-.078A4.857 4.857 0 0 0 12 3.03c-.832 0-1.687.243-2.456.698a.958.958 0 0 1-.148.078c-.008 0-.015-.03-.015-.066a6.71 6.71 0 0 0-.097-.725C8.997 1.392 8.337.319 7.46.048a2.096 2.096 0 0 0-.585-.041Zm.293 1.402c.248.197.523.759.682 1.388.03.113.06.244.069.292.007.047.026.152.041.233.067.365.098.76.102 1.24l.002.475-.12.175-.118.178h-.278c-.324 0-.646.041-.954.124l-.238.06c-.033.007-.038-.003-.057-.144a8.438 8.438 0 0 1 .016-2.323c.124-.788.413-1.501.696-1.711.067-.05.079-.049.157.013zm9.825-.012c.17.126.358.46.498.888.28.854.36 2.028.212 3.145-.019.14-.024.151-.057.144l-.238-.06a3.693 3.693 0 0 0-.954-.124h-.278l-.119-.178-.119-.175.002-.474c.004-.669.066-1.19.214-1.772.157-.623.434-1.185.68-1.382.078-.062.09-.063.159-.012z"/></svg> gpt-oss:20b · runs on our machine</div>
+      </div>
+    </div>
+  </div>
+
+  <table class="cmp">
+    <thead>
+      <tr><th></th>
+        <th><div class="col-title">Simple RAG</div><div class="flow"><span class="chip" style="border-color:#7c3aed55;background:#7c3aed0f"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="14"
+  height="14"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />
+  <path d="M20 2v4" />
+  <path d="M22 4h-4" />
+  <circle cx="4" cy="20" r="2" />
+</svg><span>embed</span></span><span class="arr">→</span><span class="chip" style="border-color:#15803d55;background:#15803d0f"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="14"
+  height="14"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#15803d"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+  <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+  <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+  <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+  <circle cx="12" cy="12" r="3" />
+  <path d="m16 16-1.9-1.9" />
+</svg><span>search</span></span><span class="arr">→</span><span class="chip" style="border-color:#7c3aed55;background:#7c3aed0f"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="14"
+  height="14"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M13 21h8" />
+  <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+</svg><span>write</span></span></div></th>
+        <th class="ours"><div class="col-title">Agentic RAG · <i>Ask</i></div><div class="flow"><span class="chip" style="border-color:#7c3aed55;background:#7c3aed0f"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="14"
+  height="14"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />
+  <path d="M20 2v4" />
+  <path d="M22 4h-4" />
+  <circle cx="4" cy="20" r="2" />
+</svg><span>embed</span></span><span class="arr">→</span><span class="chip" style="border-color:#15803d55;background:#15803d0f"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="14"
+  height="14"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#15803d"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+  <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+  <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+  <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+  <circle cx="12" cy="12" r="3" />
+  <path d="m16 16-1.9-1.9" />
+</svg><span>search</span></span><span class="arr">→</span><span class="chip" style="border-color:#7c3aed55;background:#7c3aed0f"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="14"
+  height="14"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M2 5h20" />
+  <path d="M6 12h12" />
+  <path d="M9 19h6" />
+</svg><span>review</span></span><span class="arr">→</span><span class="chip" style="border-color:#7c3aed55;background:#7c3aed0f"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="14"
+  height="14"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M13 21h8" />
+  <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+</svg><span>write</span></span><span class="arr">→</span><span class="chip" style="border-color:#2563eb55;background:#2563eb0f"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="14"
+  height="14"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#2563eb"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m9 12 2 2 4-4" />
+</svg><span>check</span></span></div></th>
+        <th class="ours"><div class="col-title">Agentic RAG · <i>Agent</i></div><div class="flow"><span class="chip" style="border-color:#7c3aed55;background:#7c3aed0f"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="14"
+  height="14"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="6" cy="19" r="3" />
+  <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15" />
+  <circle cx="18" cy="5" r="3" />
+</svg><span>plan</span></span><span class="loop">⇄</span><span class="chip" style="border-color:#7c3aed55;background:#7c3aed0f"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="14"
+  height="14"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />
+  <path d="M20 2v4" />
+  <path d="M22 4h-4" />
+  <circle cx="4" cy="20" r="2" />
+</svg><span>embed</span></span><span class="chip" style="border-color:#15803d55;background:#15803d0f"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="14"
+  height="14"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#15803d"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+  <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+  <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+  <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+  <circle cx="12" cy="12" r="3" />
+  <path d="m16 16-1.9-1.9" />
+</svg><span>search</span></span><span class="xn">×1–6</span><span class="arr">→</span><span class="chip" style="border-color:#7c3aed55;background:#7c3aed0f"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="14"
+  height="14"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M13 21h8" />
+  <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+</svg><span>write</span></span><span class="arr">→</span><span class="chip" style="border-color:#2563eb55;background:#2563eb0f"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="14"
+  height="14"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#2563eb"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m9 12 2 2 4-4" />
+</svg><span>check</span></span></div></th>
+      </tr>
+    </thead>
+    <tbody><tr><th>AI models needed</th><td><b>2</b></td><td class='ours'><b>2</b></td><td class='ours'><b>2</b></td></tr><tr><th>What the chat model does</th><td>Writes the answer</td><td class='ours'>Reviews the passages, then writes</td><td class='ours'>Plans the searches, then writes</td></tr><tr><th>Searches per question</th><td>1, by meaning only</td><td class='ours'>1, by meaning <b>and</b> exact words</td><td class='ours'>1–6, chosen by the AI</td></tr><tr><th>AI calls per question</th><td>2</td><td class='ours'>3</td><td class='ours'>typically 3–5</td></tr><tr><th>Protection against made-up answers</th><td>Relies on the prompt alone</td><td class='ours'>Irrelevant passages dropped, citations checked, “not found” when nothing matches</td><td class='ours'>Citations checked; says what it searched for when nothing is found</td></tr><tr><th>Time per question on our machine</th><td>~4–6 s (estimate)</td><td class='ours'>~8 s typical</td><td class='ours'>~6 s typical, longer for complex questions</td></tr><tr><th>Best for</th><td>Prototypes, simple look-ups</td><td class='ours'>Direct questions</td><td class='ours'>Questions with several parts</td></tr></tbody>
+  </table>
+
+  <div class="notes three">
+    <div class="note"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#2563eb"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z" />
+  <path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12" />
+  <path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17" />
+</svg><p><b>Uploads use only the embedding model.</b> The chat model is needed only when someone asks a question.</p></div>
+    <div class="note"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="6" cy="19" r="3" />
+  <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15" />
+  <circle cx="18" cy="5" r="3" />
+</svg><p><b>Optional third model (on our roadmap):</b> a small, dedicated “reviewer” model could replace the chat model in the
+    review step. Same job, about 0.2 s instead of about 4 s.</p></div>
+    <div class="note"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#2563eb"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+  <path d="M12 17h.01" />
+</svg><p><b>Why not one model for everything?</b> Each model does a different job.
+    Embedding models compare meaning quickly, covering thousands of passages per minute; chat models read and write. Searching with a chat model would be
+    far too slow, and an embedding model cannot write an answer.</p></div>
+  </div>
+
+  <footer><span>Agentic RAG · RAG explained · timings from our evaluation (docs/EVALUATION.md)</span><span>3 / 3</span></footer>
+</section>
+
+<section class="page p4">
+  <header>
+    <h1>Ask vs Agent, in detail</h1>
+    <p>Both modes are in our app (the <b>Ask | Agent</b> switch) and use the same two AI models. The difference: <b>who decides what to search for</b>.</p>
+  </header>
+
+  <div class="s4-question"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#475569"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" />
+  <path d="M7 11h10" />
+  <path d="M7 15h6" />
+  <path d="M7 7h8" />
+</svg><span><b>Example question with two parts:</b> “How do users on the internet reach my HTTPS API on Kubernetes, and how do I stop browsers from using an outdated JavaScript bundle?”</span></div>
+
+  <div class="s4-cols">
+    <div class="s4-col ask">
+      <div class="s4-head"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="22"
+  height="22"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#2563eb"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" />
+</svg><div><b>Ask</b><span>A fixed pipeline: <b>our code</b> decides the steps</span></div></div>
+      <div class="s4-step"><div class="s4-n">1</div><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />
+  <path d="M20 2v4" />
+  <path d="M22 4h-4" />
+  <circle cx="4" cy="20" r="2" />
+</svg><div class="s4-txt"><b>Fingerprint the question</b><span>The whole question is used as-is, as one search.</span></div><span class="s4-who ai">AI · embedding</span></div>
+      <div class="s4-step"><div class="s4-n">2</div><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#15803d"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+  <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+  <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+  <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+  <circle cx="12" cy="12" r="3" />
+  <path d="m16 16-1.9-1.9" />
+</svg><div class="s4-txt"><b>Search once</b><span>By meaning and exact words; the best 10 passages come back.</span></div><span class="s4-who db">database</span></div>
+      <div class="s4-step"><div class="s4-n">3</div><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M2 5h20" />
+  <path d="M6 12h12" />
+  <path d="M9 19h6" />
+</svg><div class="s4-txt"><b>Review</b><span>The chat AI grades each passage 0–3 and drops the irrelevant ones.</span></div><span class="s4-who ai">AI · chat</span></div>
+      <div class="s4-step"><div class="s4-n">4</div><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M13 21h8" />
+  <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+</svg><div class="s4-txt"><b>Write</b><span>The answer is written from the kept passages only, citing [n].</span></div><span class="s4-who ai">AI · chat</span></div>
+      <div class="s4-step"><div class="s4-n">5</div><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#2563eb"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m9 12 2 2 4-4" />
+</svg><div class="s4-txt"><b>Check</b><span>Every [n] must point to a real passage.</span></div><span class="s4-who code">code</span></div>
+      <div class="s4-outcome">For the example, <b>one search</b> must cover <i>both</i> topics. It often works, because hybrid search
+      returns passages about Kubernetes and caching, but one part can be missed when the question mixes topics.
+      <div class="s4-stats"><span>Always 1 search</span><span>3 AI calls</span><span>~8 s typical</span></div></div>
+    </div>
+
+    <div class="s4-col agent">
+      <div class="s4-head"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="22"
+  height="22"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="6" cy="19" r="3" />
+  <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15" />
+  <circle cx="18" cy="5" r="3" />
+</svg><div><b>Agent</b><span>A loop: <b>the AI</b> decides what to search, and when to stop</span></div></div>
+      <div class="s4-step"><div class="s4-n">1</div><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="6" cy="19" r="3" />
+  <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15" />
+  <circle cx="18" cy="5" r="3" />
+</svg><div class="s4-txt"><b>Plan</b><span>The chat AI reads the question and decides what to look up first.</span></div><span class="s4-who ai">AI · chat</span></div>
+      <div class="s4-loop">
+        <div class="s4-loop-badge"><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="14"
+  height="14"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m17 2 4 4-4 4" />
+  <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+  <path d="m7 22-4-4 4-4" />
+  <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+</svg> repeats 1–6 times</div>
+        <div class="s4-step"><div class="s4-n">2</div><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#15803d"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+  <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+  <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+  <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+  <circle cx="12" cy="12" r="3" />
+  <path d="m16 16-1.9-1.9" />
+</svg><div class="s4-txt"><b>Search with its own words</b><span>The AI writes a short, focused query; it is fingerprinted and searched, and 5 numbered passages come back.</span></div><span class="s4-who db">AI · embedding + database</span></div>
+        <div class="s4-step"><div class="s4-n">3</div><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M2 5h20" />
+  <path d="M6 12h12" />
+  <path d="M9 19h6" />
+</svg><div class="s4-txt"><b>Read and decide</b><span>Enough to answer? If not, search again with different words, or read around a passage.</span></div><span class="s4-who ai">AI · chat</span></div>
+      </div>
+      <div class="s4-step"><div class="s4-n">4</div><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M13 21h8" />
+  <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+</svg><div class="s4-txt"><b>Write</b><span>The answer is written from everything it found, citing [n].</span></div><span class="s4-who ai">AI · chat</span></div>
+      <div class="s4-step"><div class="s4-n">5</div><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="18"
+  height="18"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#2563eb"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m9 12 2 2 4-4" />
+</svg><div class="s4-txt"><b>Check</b><span>Every [n] must point to a passage it actually read.</span></div><span class="s4-who code">code</span></div>
+      <div class="s4-trace"><div class="s4-trace-title">A real run of the example question</div>
+        <div><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="13"
+  height="13"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" />
+</svg><span>search 1: “internet reach HTTPS API on Kubernetes” <i>→ 5 passages (Ingress, LoadBalancer…)</i></span></div>
+        <div><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="13"
+  height="13"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" />
+</svg><span>search 2: “stop browsers from using an outdated JavaScript bundle cache busting” <i>→ 5 passages</i></span></div>
+        <div><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="13"
+  height="13"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M13 21h8" />
+  <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+</svg><span>an answer covering both parts, citing 5 sources · 2 searches · 18.5 s</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="s4-bottom">
+    <div class="s4-box">
+      <h2><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="17"
+  height="17"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#7c3aed"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m17 2 4 4-4 4" />
+  <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+  <path d="m7 22-4-4 4-4" />
+  <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+</svg> What “×1–6” means</h2>
+      <p>The search step can repeat <b>up to 6 times</b>, a safety limit so the AI can't loop forever. Reading around a passage
+      or listing the documents also counts. At the limit, the tools are taken away and the AI must answer with what it has.
+      In our evaluation the agent needed <b>1.3 searches</b> per question on average.</p>
+    </div>
+    <div class="s4-box">
+      <h2><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="17"
+  height="17"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#2563eb"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+  <path d="M12 17h.01" />
+</svg> Which one should I use?</h2>
+      <table class="s4-guide">
+        <tr><td>Direct question with clear words <i>(“What is the default ef_search?”)</i></td><td class="pick ask">Ask</td></tr>
+        <tr><td>Two or more parts, or a comparison <i>(“Compare HNSW and IVFFlat”)</i></td><td class="pick agent">Agent</td></tr>
+        <tr><td>Unsure which words the documents use</td><td class="pick agent">Agent</td></tr>
+        <tr><td>Fastest, most predictable result</td><td class="pick ask">Ask</td></tr>
+      </table>
+    </div>
+    <div class="s4-box">
+      <h2><svg
+
+  xmlns="http://www.w3.org/2000/svg"
+  width="17"
+  height="17"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#2563eb"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z" />
+  <path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12" />
+  <path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17" />
+</svg> Trade-offs</h2>
+      <table class="s4-trade">
+        <tr><th></th><th>Ask</th><th>Agent</th></tr>
+        <tr><td>Searches</td><td>1</td><td>1–6</td></tr>
+        <tr><td>Quality review step</td><td>yes</td><td>AI judges itself</td></tr>
+        <tr><td>Tokens per question*</td><td>~575</td><td>~2,500</td></tr>
+        <tr><td>Predictability</td><td>high</td><td>varies</td></tr>
+      </table>
+      <p class="s4-note">*From our evaluation. More tokens means more cost with paid AI services.</p>
+    </div>
+  </div>
+
+  <footer><span>Agentic RAG · RAG explained · Ask vs Agent in detail</span><span>Appendix</span></footer>
+</section>
+</body></html>
