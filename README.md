@@ -35,6 +35,13 @@ Built as a learning project with production habits: Clean Architecture enforced 
   </tr>
 </table>
 
+## How it works, for non-technical readers
+
+Two one-page diagrams, with a plain-language explanation on page 2 of each:
+
+- **[How a document becomes searchable](docs/diagrams/document-upload-flow.pdf):** upload, background processing, and the one step where AI is used.
+- **[How a question gets an answer](docs/diagrams/question-answer-flow.pdf):** search, AI review, a cited answer, and the guards against made-up answers.
+
 ## Architecture
 
 ```mermaid
