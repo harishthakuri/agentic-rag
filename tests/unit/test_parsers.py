@@ -66,6 +66,11 @@ def test_markdown_inline_markup_is_stripped_from_headings() -> None:
     assert parsed.sections[0].heading_path == ("The kubectl CLI",)
 
 
+def test_markdown_heading_keeps_underscores_inside_identifiers() -> None:
+    parsed = MarkdownParser().parse(b"## `work_mem` and _emphasis_\n\nText.")
+    assert parsed.sections[0].heading_path == ("work_mem and emphasis",)
+
+
 def test_plain_text_is_one_section() -> None:
     parsed = PlainTextParser().parse(b"line one\r\n\r\nline two\r\n")
     assert [s.text for s in parsed.sections] == ["line one\n\nline two"]

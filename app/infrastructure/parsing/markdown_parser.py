@@ -15,7 +15,8 @@ from app.application.ports.parsing import ParsedDocument, Section, UnparseableDo
 _HEADING = re.compile(r"^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$")
 _FENCE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})")
 _FRONT_MATTER = re.compile(r"\A---\n.*?\n---\n", re.DOTALL)
-_INLINE_MARKUP = re.compile(r"[*_`]")
+# Emphasis and code markers. Underscores only at word edges: `work_mem` keeps its own.
+_INLINE_MARKUP = re.compile(r"[*`]|(?<!\w)_+|_+(?!\w)")
 
 
 class MarkdownParser:
