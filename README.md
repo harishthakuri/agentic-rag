@@ -115,6 +115,18 @@ What the numbers say:
 - **The remaining weakness is citation discipline:** some answers cite nothing, even though every citation that does appear is correct.
 - **The evaluation caught three bugs before it produced trustworthy numbers,** two of them in production code.
 
+## What needs to be running
+
+| Component | What it does | Local (`make …`) | Docker Compose |
+|---|---|---|---|
+| **PostgreSQL + pgvector** | Stores documents, passages, embeddings and jobs | Your own server | `postgres` container |
+| **Ollama** | Runs the AI models (embeddings and chat) | Ollama app on your machine | On the host (see below) |
+| **API server** | Web UI, REST API; searching and answering | `make run` | `api` container |
+| **Ingestion worker** | Turns uploaded files into searchable passages | **`make worker`** (separate terminal) | `worker` container, starts automatically |
+
+> [!IMPORTANT]
+> **The ingestion worker is a separate process.** Without it, uploads are accepted but stay **pending** forever, and nothing becomes searchable. Docker Compose starts it for you. In local development, run `make worker` alongside `make run`. The UI flags documents that have been pending for a while.
+
 ## Quickstart
 
 ### With Docker
@@ -154,9 +166,9 @@ cp .env.example .env          # fill in the role passwords from step 1
 make install                  # dependencies + git hooks
 make migrate
 
-# 3. Run (two terminals)
-make run                      # API + UI at http://localhost:8000
-make worker                   # ingestion worker
+# 3. Run: both are needed (two terminals)
+make run                      # terminal 1: API + UI at http://localhost:8000
+make worker                   # terminal 2: ingestion worker (without it, uploads stay "pending")
 
 make api-key name=dev         # create an API key (shown once)
 ```

@@ -329,6 +329,11 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+.document.stuck .doc-main .hint {
+  color: var(--warn);
+  white-space: normal;
+}
+
 .doc-title {
   font-weight: 500;
   overflow: hidden;

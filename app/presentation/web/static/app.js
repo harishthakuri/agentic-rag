@@ -276,10 +276,16 @@ function documentItem(doc) {
       reportError(error);
     }
   });
-  const detail = doc.status === "ready" ? `${doc.chunk_count} chunks` : doc.error || doc.source_filename;
+  // A job waits at most a couple of seconds for a running worker; much longer means none is running.
+  const stuck = doc.status === "pending" && Date.now() - Date.parse(doc.created_at) > 30_000;
+  const detail = doc.status === "ready"
+    ? `${doc.chunk_count} chunks`
+    : stuck
+      ? "Still waiting: is the worker running? (make worker)"
+      : doc.error || doc.source_filename;
   return el(
     "li",
-    { className: "document", attrs: { title: doc.error || doc.source_filename } },
+    { className: `document${stuck ? " stuck" : ""}`, attrs: { title: doc.error || doc.source_filename } },
     el("div", { className: "doc-main" }, el("span", { className: "doc-title", text: doc.title }), el("span", { className: "hint", text: detail })),
     el("span", { className: `badge status-${doc.status}`, text: doc.status }),
     remove,
