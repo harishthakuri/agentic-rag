@@ -87,10 +87,20 @@ class Settings(BaseSettings):
     rerank_depth: int = Field(default=10, ge=1, le=100)
     reranker_batch_size: int = Field(default=10, ge=1)
     reranker_max_concurrency: int = Field(default=2, ge=1)
+    # RERANKER=cross_encoder (needs `uv sync --extra rerank`). Hugging Face model id;
+    # downloaded on first use and cached in ~/.cache/huggingface/.
+    # Qwen3-Reranker-0.6B ranked as well as the LLM reranker on the benchmark, ~4x faster.
+    cross_encoder_model: str = "Qwen/Qwen3-Reranker-0.6B"
+    cross_encoder_device: str | None = None  # mps | cuda | cpu; empty: best available
+    cross_encoder_max_length: int | None = Field(default=None, ge=16)  # empty: model's limit
+    cross_encoder_batch_size: int = Field(default=16, ge=1)
 
     # --- Answering (/ask) --------------------------------------------------
     answer_context_tokens: int = Field(default=3000, ge=200)  # budget for sources in the prompt
     answer_min_rerank_grade: int = Field(default=1, ge=0, le=3)  # drop reranked chunks below
+    # The same for the cross-encoder, whose scores are 0..1 rather than 0-3 grades.
+    # Low on purpose: it only drops clearly unrelated chunks. Calibrate with the evals.
+    answer_min_cross_encoder_score: float = Field(default=0.02, ge=0, le=1)
 
     # --- Agent (/agent/ask) ------------------------------------------------
     agent_max_tool_calls: int = Field(default=6, ge=1, le=12)

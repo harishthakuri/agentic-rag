@@ -20,6 +20,13 @@ dependencies = [
     "uvicorn[standard]>=0.54.0",
 ]
 
+[project.optional-dependencies]
+# Cross-encoder reranker (RERANKER=cross_encoder). Pulls in PyTorch (~1 GB), so it
+# is opt-in: uv sync --extra rerank
+rerank = [
+    "sentence-transformers>=5.0.0",
+]
+
 [project.scripts]
 rag-admin = "app.presentation.cli.__main__:main"
 rag-worker = "app.worker:main"
@@ -84,7 +91,7 @@ plugins = ["pydantic.mypy"]
 exclude = ["^alembic/"]
 
 [[tool.mypy.overrides]]
-module = ["asyncpg.*", "pgvector.*", "testcontainers.*"]
+module = ["asyncpg.*", "pgvector.*", "testcontainers.*", "sentence_transformers.*", "torch.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------

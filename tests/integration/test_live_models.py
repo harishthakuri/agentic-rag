@@ -5,7 +5,7 @@ import math
 import pytest
 
 from app.bootstrap.container import Container
-from app.core.config import get_settings
+from app.core.config import RerankerKind, get_settings
 
 pytestmark = pytest.mark.live
 
@@ -29,12 +29,15 @@ async def test_ollama_embeddings_have_configured_size_and_unit_length() -> None:
     assert cosine(query, document) > cosine(unrelated, document)
 
 
-async def test_llm_reranker_prefers_the_passage_that_answers() -> None:
+@pytest.mark.parametrize("kind", [RerankerKind.LLM, RerankerKind.CROSS_ENCODER])
+async def test_reranker_prefers_the_passage_that_answers(kind: RerankerKind) -> None:
     from app.application.ports.reranking import RerankCandidate
     from app.domain.value_objects import new_id
 
-    container = Container(get_settings())
-    assert container.reranker is not None, "set RERANKER=llm"
+    if kind is RerankerKind.CROSS_ENCODER:
+        pytest.importorskip("sentence_transformers", reason="uv sync --extra rerank")
+    container = Container(get_settings().model_copy(update={"reranker": kind}))
+    assert container.reranker is not None
     freshness = RerankCandidate(
         new_id(),
         "HTTP Caching > Freshness\nA cached response is fresh or stale. max-age makes a "

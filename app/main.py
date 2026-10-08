@@ -30,8 +30,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         container = Container(settings)
         app.state.container = container
-        logger.info("app.started", env=settings.app_env, llm_model=settings.llm_model)
         try:
+            await container.warm_up()
+            logger.info(
+                "app.started",
+                env=settings.app_env,
+                llm_model=settings.llm_model,
+                reranker=settings.reranker,
+            )
             yield
         finally:
             await container.aclose()

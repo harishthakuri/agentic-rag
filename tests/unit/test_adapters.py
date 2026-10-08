@@ -1,5 +1,6 @@
 """Infrastructure adapters that need no external services."""
 
+import asyncio
 import json
 import math
 import re
@@ -25,7 +26,7 @@ from app.application.ports.reranking import RerankCandidate, RerankError
 from app.domain.value_objects import EmbeddingSpec, new_id
 from app.infrastructure.llm.openai_chat import OpenAICompatibleChatModel
 from app.infrastructure.llm.openai_embedder import OpenAICompatibleEmbedder
-from app.infrastructure.reranking import LLMReranker
+from app.infrastructure.reranking import CrossEncoderReranker, LLMReranker
 from app.infrastructure.storage.local import LocalFileStorage
 
 
@@ -206,6 +207,65 @@ async def test_llm_reranker_failures_raise_rerank_error(
     reranker = _reranker(_chat_api([], reply))
     with pytest.raises(RerankError):
         await reranker.rerank("q", _candidates("a", "b"))
+
+
+# --- Cross-encoder reranker (with a fake model) -------------------------------
+class _FakeScorer:
+    """Scores a pair 1.0 if the passage contains the query's last word, else 0.0."""
+
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.calls: list[list[tuple[str, str]]] = []
+
+    def predict(
+        self, inputs: list[tuple[str, str]], *, batch_size: int, show_progress_bar: bool
+    ) -> list[float]:
+        self.calls.append(inputs)
+        if self.fail:
+            raise RuntimeError("MPS backend out of memory")
+        return [1.0 if query.split()[-1] in passage else 0.0 for query, passage in inputs]
+
+
+def _cross_encoder(scorer: _FakeScorer, loads: list[int] | None = None) -> CrossEncoderReranker:
+    def load() -> _FakeScorer:
+        if loads is not None:
+            loads.append(1)
+        return scorer
+
+    return CrossEncoderReranker("bge-test", load)
+
+
+async def test_cross_encoder_scores_query_passage_pairs() -> None:
+    scorer = _FakeScorer()
+    reranker = _cross_encoder(scorer)
+    candidates = _candidates("ETag validators", "max-age freshness")
+
+    scores = {s.id: s.score for s in await reranker.rerank("what is an ETag", candidates)}
+
+    assert scores == {candidates[0].id: 1.0, candidates[1].id: 0.0}
+    assert scorer.calls == [
+        [("what is an ETag", "ETag validators"), ("what is an ETag", "max-age freshness")]
+    ]
+    assert reranker.name == "cross_encoder:bge-test"
+
+
+async def test_cross_encoder_loads_the_model_once() -> None:
+    loads: list[int] = []
+    reranker = _cross_encoder(_FakeScorer(), loads)
+    await reranker.warm_up()
+    await asyncio.gather(*(reranker.rerank("q", _candidates("q")) for _ in range(3)))
+    assert loads == [1]
+
+
+async def test_cross_encoder_skips_the_model_for_no_candidates() -> None:
+    scorer = _FakeScorer()
+    assert await _cross_encoder(scorer).rerank("q", []) == []
+    assert scorer.calls == []
+
+
+async def test_cross_encoder_failure_raises_rerank_error() -> None:
+    with pytest.raises(RerankError, match="out of memory"):
+        await _cross_encoder(_FakeScorer(fail=True)).rerank("q", _candidates("a"))
 
 
 # --- Chat model (against a mocked streaming chat-completions API) -------------

@@ -6,7 +6,9 @@ cases to the presentation layer. Swapping an adapter (e.g. Ollama → OpenAI,
 LLM reranker → cross-encoder) is a change here and in settings, nowhere else.
 """
 
+import importlib.util
 from datetime import timedelta
+from functools import partial
 
 from openai import AsyncOpenAI
 
@@ -45,7 +47,7 @@ from app.infrastructure.persistence.database import Database
 from app.infrastructure.persistence.health import DatabaseHealthCheck
 from app.infrastructure.persistence.orm import EMBEDDING_DIMENSIONS
 from app.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
-from app.infrastructure.reranking import LLMReranker
+from app.infrastructure.reranking import CrossEncoderReranker, LLMReranker, load_cross_encoder
 from app.infrastructure.storage.local import LocalFileStorage
 
 
@@ -108,7 +110,27 @@ class Container:
                     reasoning_effort=settings.reranker_reasoning_effort or None,
                 )
             case RerankerKind.CROSS_ENCODER:
-                raise ConfigurationError("RERANKER=cross_encoder is not implemented yet")
+                if importlib.util.find_spec("sentence_transformers") is None:
+                    raise ConfigurationError(
+                        "RERANKER=cross_encoder needs the optional dependencies: "
+                        "uv sync --extra rerank"
+                    )
+                return CrossEncoderReranker(
+                    settings.cross_encoder_model,
+                    partial(
+                        load_cross_encoder,
+                        settings.cross_encoder_model,
+                        device=settings.cross_encoder_device or None,
+                        max_length=settings.cross_encoder_max_length,
+                    ),
+                    batch_size=settings.cross_encoder_batch_size,
+                )
+
+    def _min_rerank_score(self) -> float:
+        """The /ask relevance cut-off, on the scale of the configured reranker."""
+        if self.settings.reranker is RerankerKind.CROSS_ENCODER:
+            return self.settings.answer_min_cross_encoder_score
+        return self.settings.answer_min_rerank_grade
 
     # --- Infrastructure ----------------------------------------------------
     def unit_of_work(self) -> UnitOfWork:
@@ -188,7 +210,7 @@ class Container:
             ContextBuilder(
                 self.tokens,
                 token_budget=self.settings.answer_context_tokens,
-                min_rerank_score=self.settings.answer_min_rerank_grade,
+                min_rerank_score=self._min_rerank_score(),
             ),
         )
 
@@ -223,6 +245,12 @@ class Container:
         return RevokeApiKey(self.unit_of_work)
 
     # --- Lifecycle ---------------------------------------------------------
+    async def warm_up(self) -> None:
+        """Load local models now, so the first request doesn't pay for it. Only the
+        API calls this: the worker and the CLI never rerank."""
+        if isinstance(self.reranker, CrossEncoderReranker):
+            await self.reranker.warm_up()
+
     async def aclose(self) -> None:
         await self._embedding_client.close()
         await self._llm_client.close()
