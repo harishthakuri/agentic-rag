@@ -22,6 +22,7 @@ from app.application.dto.pagination import PageRequest
 from app.application.prompts import agent as agent_prompts
 from app.application.prompts import answer as answer_prompts
 from app.bootstrap.container import Container
+from app.bootstrap.observability import configure_observability
 from app.core.config import get_settings
 from evals.dataset import load_dataset
 from evals.judge import Judge
@@ -33,6 +34,7 @@ ROOT = Path(__file__).resolve().parent
 
 async def main(args: argparse.Namespace) -> None:
     settings = get_settings()
+    shutdown_telemetry = configure_observability(settings, "agentic-rag-evals")
     container = Container(settings)
     judge_client = AsyncOpenAI(
         base_url=settings.llm_base_url,
@@ -67,6 +69,7 @@ async def main(args: argparse.Namespace) -> None:
     finally:
         await container.aclose()
         await judge_client.close()
+        shutdown_telemetry()
 
     finished = datetime.now(UTC)
     meta = {

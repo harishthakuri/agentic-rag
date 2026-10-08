@@ -27,6 +27,14 @@ x-app: &app
     EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-ollama}
     EMBEDDING_MODEL: ${EMBEDDING_MODEL:-qwen3-embedding:8b}
     RERANKER: ${RERANKER:-llm}
+    # Observability (docs/OBSERVABILITY_PLAN.md): the Grafana and Langfuse stacks run on
+    # the host, so containers reach them through host.docker.internal.
+    OBSERVABILITY_ENABLED: ${OBSERVABILITY_ENABLED:-false}
+    OTLP_ENDPOINT: ${DOCKER_OTLP_ENDPOINT:-http://host.docker.internal:4318}
+    LANGFUSE_BASE_URL: ${DOCKER_LANGFUSE_BASE_URL:-}  # e.g. http://host.docker.internal:3001
+    LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
+    LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
+    OBSERVABILITY_CAPTURE_CONTENT: ${OBSERVABILITY_CAPTURE_CONTENT:-false}
   extra_hosts:
     - "host.docker.internal:host-gateway" # Linux; built in on Docker/Rancher Desktop
   volumes:

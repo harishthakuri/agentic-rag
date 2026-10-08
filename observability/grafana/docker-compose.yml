@@ -1,0 +1,36 @@
+# Grafana LGTM: one container with an OpenTelemetry Collector, Tempo (traces),
+# Prometheus (metrics), Loki (logs) and Grafana (UI). For local development and
+# demos, not production (see docs/OBSERVABILITY_PLAN.md).
+#
+#   docker compose -f observability/grafana/docker-compose.yml up -d
+#   open http://localhost:3000            # Grafana, login admin / admin
+#
+# The app sends to http://localhost:4318 (OTLP over HTTP). From a container of the
+# main stack, use http://host.docker.internal:4318.
+
+name: agentic-rag-grafana
+
+services:
+  lgtm:
+    image: grafana/otel-lgtm:0.35.0
+    ports:
+      - "3000:3000" # Grafana UI
+      - "4317:4317" # OTLP gRPC (not used by the app, kept for other tools)
+      - "4318:4318" # OTLP HTTP: the app sends traces, metrics and logs here
+      - "127.0.0.1:9090:9090" # Prometheus UI/API (local only)
+    environment:
+      # Local development only: skip the login form, view as an admin.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      # Count the first event of a new series too: without this, increase() and rate()
+      # ignore it, and a dev setup with few requests and restarting processes shows zeros.
+      PROMETHEUS_EXTRA_ARGS: --enable-feature=created-timestamp-zero-ingestion
+    volumes:
+      - lgtm-data:/data # traces, metrics, logs and Grafana state survive restarts
+      # The "Agentic RAG" dashboard, loaded automatically.
+      - ./dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/agentic-rag.yaml:ro
+      - ./dashboards:/otel-lgtm/agentic-rag-dashboards:ro
+    restart: unless-stopped
+
+volumes:
+  lgtm-data:

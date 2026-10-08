@@ -13,7 +13,7 @@ from app.application.use_cases.agent import (
     ToolCalled,
     ToolReturned,
 )
-from app.application.use_cases.answering import AnswerDelta
+from app.application.use_cases.answering import AnswerDelta, AnswerRevising
 from app.presentation.api.dependencies import AgentAskDep, GetAgentRunDep
 from app.presentation.api.errors import PROBLEM_RESPONSES
 from app.presentation.api.schemas.agent import (
@@ -95,5 +95,7 @@ def _to_sse(event: AgentEvent, steps: list[ToolCallEvent]) -> str:
             return sse_event("tool_result", ToolResultEvent.from_domain(event))
         case AnswerDelta(text=text):
             return sse_event("token", TokenEvent(text=text))
+        case AnswerRevising():
+            return sse_event("revising", {})
         case AgentCompleted():
             return sse_event("done", AgentAskResponse.from_domain(event, steps))

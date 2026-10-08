@@ -1,0 +1,11 @@
+# Grafana provisioning: load every dashboard JSON in observability/grafana/dashboards/
+# (mounted at /otel-lgtm/agentic-rag-dashboards) into the "Agentic RAG" folder.
+apiVersion: 1
+
+providers:
+  - name: agentic-rag
+    folder: Agentic RAG
+    type: file
+    allowUiUpdates: true  # edit in the UI, then export the JSON back into the repo
+    options:
+      path: /otel-lgtm/agentic-rag-dashboards

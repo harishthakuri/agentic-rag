@@ -5,22 +5,54 @@
 
 Standard-library loggers (uvicorn, sqlalchemy, alembic) are routed through the
 same processors so every line has the same shape.
+
+With observability on, each line inside a request also carries `trace_id` and
+`span_id`, so a log line leads to its trace (and back).
 """
 
 import logging
 import sys
+from collections.abc import MutableMapping
+from typing import Any
 
 import structlog
+from opentelemetry import trace
+
+
+def _add_trace_ids(
+    _logger: Any, _method: str, event_dict: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
+    context = trace.get_current_span().get_span_context()
+    if context.is_valid:  # only when a span is active (observability on)
+        event_dict["trace_id"] = format(context.trace_id, "032x")
+        event_dict["span_id"] = format(context.span_id, "016x")
+    return event_dict
+
+
+_SHARED_PROCESSORS: list[structlog.types.Processor] = [
+    structlog.contextvars.merge_contextvars,  # request_id etc. bound per request
+    _add_trace_ids,
+    structlog.stdlib.add_log_level,
+    structlog.stdlib.add_logger_name,
+    structlog.processors.TimeStamper(fmt="iso", utc=True),
+    structlog.processors.StackInfoRenderer(),
+]
+
+
+def json_formatter() -> logging.Formatter:
+    """One JSON object per record, for log handlers other than the console."""
+    return structlog.stdlib.ProcessorFormatter(
+        foreign_pre_chain=_SHARED_PROCESSORS,
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            structlog.processors.format_exc_info,
+            structlog.processors.JSONRenderer(),
+        ],
+    )
 
 
 def configure_logging(level: str = "INFO", *, json_logs: bool = False) -> None:
-    shared_processors: list[structlog.types.Processor] = [
-        structlog.contextvars.merge_contextvars,  # request_id etc. bound per request
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.add_logger_name,
-        structlog.processors.TimeStamper(fmt="iso", utc=True),
-        structlog.processors.StackInfoRenderer(),
-    ]
+    shared_processors = _SHARED_PROCESSORS
 
     renderer: structlog.types.Processor = (
         structlog.processors.JSONRenderer()

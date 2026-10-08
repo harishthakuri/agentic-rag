@@ -25,6 +25,15 @@ from uuid import UUID
 from app.application.ports.embeddings import EmbeddingProvider
 from app.application.ports.reranking import RerankCandidate, Reranker, RerankError
 from app.application.ports.search import ChunkMatch
+from app.application.ports.telemetry import (
+    NOOP_SPAN,
+    NOOP_TELEMETRY,
+    RERANK_FAILURES,
+    STEP_DURATION,
+    Span,
+    SpanKind,
+    Telemetry,
+)
 from app.application.ports.unit_of_work import UnitOfWorkFactory
 from app.application.use_cases.collections import CollectionNotFoundError
 from app.domain.exceptions import ConflictError, DomainValidationError
@@ -95,13 +104,38 @@ class SearchCollection:
         reranker: Reranker | None = None,
         *,
         rerank_depth: int = 10,
+        telemetry: Telemetry = NOOP_TELEMETRY,
     ) -> None:
         self._uow_factory = uow_factory
         self._embedder = embedder
         self._reranker = reranker
         self._rerank_depth = rerank_depth  # how many first-stage candidates to rerank
+        self._telemetry = telemetry
 
     async def execute(self, query: SearchQuery) -> SearchResult:
+        with self._telemetry.span(
+            "rag.search",
+            kind="retriever",
+            attributes={
+                "rag.search.mode": query.mode.value,
+                "rag.search.top_k": query.top_k,
+                "rag.search.candidates": query.candidates,
+                "rag.collection.id": str(query.collection_id),
+            },
+        ) as span:
+            span.content(input=query.text)
+            result = await self._execute(query)
+            span.set(
+                {
+                    "rag.search.hits": len(result.hits),
+                    "rag.reranker": result.reranker,
+                    "rag.rerank.error": result.rerank_error,
+                }
+            )
+            span.content(output=[_hit_summary(h) for h in result.hits])
+            return result
+
+    async def _execute(self, query: SearchQuery) -> SearchResult:
         timings: dict[str, float] = {}
         started = time.perf_counter()
         use_vector = query.mode in (SearchMode.VECTOR, SearchMode.HYBRID)
@@ -124,31 +158,36 @@ class SearchCollection:
             vector_matches: list[ChunkMatch] = []
             keyword_matches: list[ChunkMatch] = []
             if use_vector:
-                with _timer(timings, "embed"):
+                with self._step(timings, "embed", span=False):  # the embedder has its own span
                     embedding = await self._embedder.embed_query(query.text)
-                with _timer(timings, "vector_search"):
+                with self._step(timings, "vector_search") as span:
                     vector_matches = await uow.search.vector_search(
                         collection.id, embedding, query.candidates
                     )
+                    span.set({"rag.matches": len(vector_matches)})
             if use_keyword:
-                with _timer(timings, "keyword_search"):
+                with self._step(timings, "keyword_search") as span:
                     keyword_matches = await uow.search.keyword_search(
                         collection.id, query.text, query.candidates
                     )
+                    span.set({"rag.matches": len(keyword_matches)})
 
         hits = _first_stage(query, vector_matches, keyword_matches)
         reranker_name: str | None = None
         rerank_error: str | None = None
         if rerank and self._reranker is not None and hits:
-            with _timer(timings, "rerank"):
+            depth = max(self._rerank_depth, query.top_k)
+            with self._step(timings, "rerank", kind="retriever") as span:
+                span.set({"rag.reranker": self._reranker.name, "rag.rerank.depth": depth})
                 try:
-                    hits = await self._rerank(
-                        self._reranker, query.text, hits, max(self._rerank_depth, query.top_k)
-                    )
+                    hits = await self._rerank(self._reranker, query.text, hits, depth)
                     reranker_name = self._reranker.name
+                    span.set({"rag.rerank.top_score": hits[0].rerank_score})
                 except RerankError as exc:
                     logger.warning("Reranking failed, using first-stage order: %s", exc)
                     rerank_error = str(exc)
+                    span.set({"rag.rerank.error": rerank_error})
+                    self._telemetry.count(RERANK_FAILURES, labels={"reranker": self._reranker.name})
 
         timings["total"] = _ms(started)
         return SearchResult(
@@ -159,6 +198,28 @@ class SearchCollection:
             reranker=reranker_name,
             rerank_error=rerank_error,
         )
+
+    @contextmanager
+    def _step(
+        self,
+        timings: dict[str, float],
+        name: str,
+        *,
+        kind: SpanKind = "span",
+        span: bool = True,
+    ) -> Iterator[Span]:
+        """Time one step: into `timings` (returned to clients), the step-duration
+        metric, and (unless `span=False`) a span."""
+        started = time.perf_counter()
+        try:
+            if span:
+                with self._telemetry.span(f"rag.{name}", kind=kind) as current:
+                    yield current
+            else:
+                yield NOOP_SPAN
+        finally:
+            timings[name] = _ms(started)
+            self._telemetry.record(STEP_DURATION, time.perf_counter() - started, {"step": name})
 
     async def _rerank(
         self, reranker: Reranker, query: str, hits: list[SearchHit], depth: int
@@ -218,13 +279,17 @@ def _candidate(match: ChunkMatch) -> RerankCandidate:
     return RerankCandidate(id=match.chunk_id, text=f"{location}\n{match.text}")
 
 
-@contextmanager
-def _timer(timings: dict[str, float], name: str) -> Iterator[None]:
-    started = time.perf_counter()
-    try:
-        yield
-    finally:
-        timings[name] = _ms(started)
+def _hit_summary(hit: "SearchHit") -> dict[str, object]:
+    """What a trace shows per hit (with content capture): where it is and its scores."""
+    match = hit.match
+    return {
+        "document": match.document_title,
+        "section": " > ".join(match.heading_path),
+        "page": match.page,
+        "retrieval_rank": hit.retrieval_rank,
+        "rerank_score": hit.rerank_score,
+        "text": match.text[:300],
+    }
 
 
 def _ms(started: float) -> float:

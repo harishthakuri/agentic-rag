@@ -18,6 +18,7 @@ import socket
 import structlog
 
 from app.bootstrap.container import Container
+from app.bootstrap.observability import configure_observability
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 
@@ -65,6 +66,7 @@ async def run_worker(
 async def _main(once: bool) -> None:
     settings = get_settings()
     configure_logging(settings.log_level, json_logs=settings.log_json)
+    shutdown_telemetry = configure_observability(settings, "agentic-rag-worker")
     container = Container(settings)
     worker_id = f"{socket.gethostname()}:{os.getpid()}"
 
@@ -85,6 +87,7 @@ async def _main(once: bool) -> None:
     finally:
         await container.aclose()
     logger.info("worker.stopped", processed=processed)
+    shutdown_telemetry()  # flush the last spans, metrics and logs
 
 
 def main() -> None:

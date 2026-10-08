@@ -7,12 +7,14 @@ quality close to the full vector while fitting pgvector's HNSW index.
 """
 
 import math
+import time
 from collections.abc import Sequence
 
 import openai
 from openai import AsyncOpenAI
 
 from app.application.ports.embeddings import EmbeddingUnavailableError
+from app.application.ports.telemetry import LLM_DURATION, LLM_TOKENS, NOOP_TELEMETRY, Telemetry
 from app.domain.value_objects import EmbeddingSpec
 
 # Qwen3-Embedding is instruction-aware for queries (documents get no prefix).
@@ -29,11 +31,15 @@ class OpenAICompatibleEmbedder:
         *,
         batch_size: int = 32,
         query_instruction: str | None = DEFAULT_QUERY_INSTRUCTION,
+        telemetry: Telemetry = NOOP_TELEMETRY,
+        provider: str = "openai_compatible",
     ) -> None:
         self._client = client
         self._spec = spec
         self._batch_size = batch_size
         self._query_instruction = query_instruction
+        self._telemetry = telemetry
+        self._provider = provider
 
     @property
     def spec(self) -> EmbeddingSpec:
@@ -52,16 +58,35 @@ class OpenAICompatibleEmbedder:
         return vector
 
     async def _embed(self, batch: list[str]) -> list[list[float]]:
-        try:
-            response = await self._client.embeddings.create(
-                model=self._spec.model, input=batch, dimensions=self._spec.dimensions
-            )
-        except (
-            openai.APIConnectionError,
-            openai.APITimeoutError,
-            openai.InternalServerError,
-        ) as exc:
-            raise EmbeddingUnavailableError(f"embedding service unavailable: {exc}") from exc
+        labels = {"gen_ai.operation.name": "embeddings", "gen_ai.request.model": self._spec.model}
+        started = time.perf_counter()
+        with self._telemetry.span(
+            f"embeddings {self._spec.model}",
+            kind="embedding",
+            attributes={
+                "gen_ai.operation.name": "embeddings",
+                "gen_ai.provider.name": self._provider,
+                "gen_ai.request.model": self._spec.model,
+                "gen_ai.embeddings.dimension.count": self._spec.dimensions,
+                "rag.inputs": len(batch),
+            },
+        ) as span:
+            try:
+                response = await self._client.embeddings.create(
+                    model=self._spec.model, input=batch, dimensions=self._spec.dimensions
+                )
+            except (
+                openai.APIConnectionError,
+                openai.APITimeoutError,
+                openai.InternalServerError,
+            ) as exc:
+                raise EmbeddingUnavailableError(f"embedding service unavailable: {exc}") from exc
+            finally:
+                self._telemetry.record(LLM_DURATION, time.perf_counter() - started, labels)
+            if response.usage:
+                tokens = response.usage.prompt_tokens
+                span.set({"gen_ai.usage.input_tokens": tokens})
+                self._telemetry.record(LLM_TOKENS, tokens, {**labels, "gen_ai.token.type": "input"})
 
         ordered = sorted(response.data, key=lambda item: item.index)
         vectors = [_normalize(item.embedding) for item in ordered]

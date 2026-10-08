@@ -94,6 +94,9 @@ class AgentAskResponse(BaseModel):
     answer_withheld: bool = Field(
         description="True when the model's answer cited no sources and was replaced"
     )
+    answer_revised: bool = Field(
+        description="True when the draft cited no sources and the model rewrote it with citations"
+    )
 
     @classmethod
     def from_domain(cls, result: AgentCompleted, steps: list[ToolCallEvent]) -> "AgentAskResponse":
@@ -113,6 +116,7 @@ class AgentAskResponse(BaseModel):
             ),
             timings_ms=result.timings_ms,
             answer_withheld=result.withheld,
+            answer_revised=result.revised,
         )
 
 

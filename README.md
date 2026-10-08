@@ -171,7 +171,7 @@ psql -h <db-host> -U postgres -d simple-rag-db -f scripts/db/001_roles.sql
 
 # 2. Configure, install, migrate
 cp .env.example .env          # fill in the role passwords from step 1
-make install                  # dependencies + git hooks
+make install                  # dependencies (incl. reranker + Docling extras) + git hooks
 make migrate
 
 # 3. Run: both are needed (two terminals)
@@ -207,6 +207,19 @@ curl -N -X POST localhost:8000/api/v1/collections/$COLLECTION/agent/ask \
 ### Authentication
 
 API keys are random 256-bit secrets, shown once at creation (`make api-key name=dev`). The database stores only their SHA-256 hash, so a copy of the database doesn't expose usable keys. Give each client its own key, so you can revoke one (`uv run rag-admin api-key revoke <id>`) without affecting the others.
+
+## Observability
+
+OpenTelemetry traces, metrics and logs, sent to a local **Grafana** stack and/or **Langfuse**, both in Docker. Off by default; details in [docs/OBSERVABILITY_PLAN.md](docs/OBSERVABILITY_PLAN.md).
+
+```bash
+make obs-up          # Grafana http://localhost:3000 · Langfuse http://localhost:3001 (admin@example.com / langfuse-dev-password)
+# .env: OBSERVABILITY_ENABLED=true, OTLP_ENDPOINT=http://localhost:4318,
+#       LANGFUSE_BASE_URL=http://localhost:3001 (+ keys, see .env.example); then restart the API and worker
+```
+
+- **Grafana:** the "Agentic RAG" dashboard (answers by outcome, p95 per RAG step, tokens, uploads), traces in Tempo, logs in Loki linked to their traces.
+- **Langfuse:** each question as a tree of observations: search, rerank, the generation with its prompt, answer and tokens, and the citation check. Prompts and answers are recorded only with `OBSERVABILITY_CAPTURE_CONTENT=true`, and never sent to Grafana.
 
 ## Design decisions and lessons learned
 

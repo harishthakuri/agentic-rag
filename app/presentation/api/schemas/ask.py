@@ -23,7 +23,8 @@ class AskRequest(BaseModel):
     rerank: bool | None = Field(default=None, description="Default: on if a reranker is set")
     stream: bool = Field(
         default=False,
-        description="Stream Server-Sent Events (`sources`, `token`…, `done`) instead of JSON",
+        description="Stream Server-Sent Events (`sources`, `token`…, [`revising`], `done`) "
+        "instead of JSON",
     )
 
 
@@ -67,6 +68,9 @@ class AskResponse(BaseModel):
     answer_withheld: bool = Field(
         description="True when the model's answer cited no sources and was replaced"
     )
+    answer_revised: bool = Field(
+        description="True when the draft cited no sources and the model rewrote it with citations"
+    )
 
     @classmethod
     def from_domain(cls, result: AskResult) -> "AskResponse":
@@ -81,6 +85,7 @@ class AskResponse(BaseModel):
             reranker=result.search.reranker,
             timings_ms=result.timings_ms,
             answer_withheld=result.withheld,
+            answer_revised=result.revised,
         )
 
 
@@ -102,6 +107,7 @@ class DoneEvent(BaseModel):
     usage: UsageResponse | None
     timings_ms: dict[str, float]
     answer_withheld: bool  # replaces the streamed tokens with `answer`
+    answer_revised: bool  # the same: `answer` is the draft rewritten with citations
 
     @classmethod
     def from_domain(cls, event: AnswerCompleted) -> "DoneEvent":
@@ -113,6 +119,7 @@ class DoneEvent(BaseModel):
             usage=_usage(event.usage),
             timings_ms=event.timings_ms,
             answer_withheld=event.withheld,
+            answer_revised=event.revised,
         )
 
 

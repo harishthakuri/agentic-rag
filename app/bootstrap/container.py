@@ -12,7 +12,9 @@ from functools import partial
 
 from openai import AsyncOpenAI
 
+from app.application.ports.parsing import DocumentParser
 from app.application.ports.reranking import Reranker
+from app.application.ports.telemetry import NOOP_TELEMETRY, Telemetry
 from app.application.ports.unit_of_work import UnitOfWork
 from app.application.use_cases.agent import AgentAsk, GetAgentRun
 from app.application.use_cases.answering import AskQuestion, ContextBuilder
@@ -36,13 +38,19 @@ from app.application.use_cases.ingestion import (
 )
 from app.application.use_cases.retrieval import SearchCollection
 from app.application.use_cases.system.check_readiness import CheckReadiness
-from app.core.config import RerankerKind, Settings
+from app.core.config import PdfParserKind, RerankerKind, Settings
 from app.domain.value_objects import EmbeddingSpec
 from app.infrastructure.chunking import StructureAwareChunker, TiktokenCounter
 from app.infrastructure.llm.health import ModelHealthCheck
 from app.infrastructure.llm.openai_chat import OpenAICompatibleChatModel
 from app.infrastructure.llm.openai_embedder import OpenAICompatibleEmbedder
-from app.infrastructure.parsing import DefaultParserRegistry
+from app.infrastructure.observability import OpenTelemetryAdapter, instrument_database
+from app.infrastructure.parsing import (
+    DefaultParserRegistry,
+    DoclingPdfParser,
+    PdfParser,
+    load_docling_converter,
+)
 from app.infrastructure.persistence.database import Database
 from app.infrastructure.persistence.health import DatabaseHealthCheck
 from app.infrastructure.persistence.orm import EMBEDDING_DIMENSIONS
@@ -64,9 +72,18 @@ class Container:
                 "re-embedding every collection."
             )
         self.settings = settings
+        # Spans and metrics; providers and exporters are set up per process (see
+        # bootstrap/observability.py). Off: a no-op that records nothing.
+        self.telemetry: Telemetry = (
+            OpenTelemetryAdapter(capture_content=settings.observability_capture_content)
+            if settings.observability_enabled
+            else NOOP_TELEMETRY
+        )
         self.database = Database(settings)
+        if settings.observability_enabled:
+            instrument_database(self.database.engine)
         self.storage = LocalFileStorage(settings.storage_dir)
-        self.parsers = DefaultParserRegistry()
+        self.parsers = DefaultParserRegistry(pdf=self._build_pdf_parser(settings))
         self.tokens = TiktokenCounter()
         self.chunker = StructureAwareChunker(
             self.tokens,
@@ -83,6 +100,8 @@ class Container:
             self._embedding_client,
             EmbeddingSpec(model=settings.embedding_model, dimensions=settings.embedding_dim),
             batch_size=settings.embedding_batch_size,
+            telemetry=self.telemetry,
+            provider=_provider_name(settings.embedding_base_url),
         )
         self._llm_client = AsyncOpenAI(
             base_url=settings.llm_base_url,
@@ -95,6 +114,26 @@ class Container:
             self._llm_client,
             settings.llm_model,
             reasoning_effort=settings.llm_reasoning_effort or None,
+            telemetry=self.telemetry,
+            provider=_provider_name(settings.llm_base_url),
+        )
+
+    def _build_pdf_parser(self, settings: Settings) -> DocumentParser:
+        if settings.pdf_parser is PdfParserKind.PYPDF:
+            return PdfParser()
+        if importlib.util.find_spec("docling") is None:
+            raise ConfigurationError(
+                "PDF_PARSER=docling needs the optional dependencies: uv sync --extra docling"
+            )
+        # The models load on the first PDF, so only the worker pays for them.
+        return DoclingPdfParser(
+            partial(
+                load_docling_converter,
+                ocr=settings.docling_ocr.value,
+                tables=settings.docling_tables,
+                timeout_seconds=settings.docling_timeout_seconds,
+            ),
+            fallback=PdfParser(),
         )
 
     def _build_reranker(self, settings: Settings) -> Reranker | None:
@@ -179,6 +218,7 @@ class Container:
             self.chunker,
             self.embedder,
             lease=timedelta(seconds=self.settings.worker_job_lease_seconds),
+            telemetry=self.telemetry,
         )
 
     def get_ingestion_job(self) -> GetIngestionJob:
@@ -200,6 +240,7 @@ class Container:
             self.embedder,
             self.reranker,
             rerank_depth=self.settings.rerank_depth,
+            telemetry=self.telemetry,
         )
 
     # --- Answering ---------------------------------------------------------
@@ -212,6 +253,7 @@ class Container:
                 token_budget=self.settings.answer_context_tokens,
                 min_rerank_score=self._min_rerank_score(),
             ),
+            telemetry=self.telemetry,
         )
 
     # --- Agent -------------------------------------------------------------
@@ -226,6 +268,7 @@ class Container:
             timeout_seconds=settings.agent_timeout_seconds,
             search_top_k=settings.agent_search_top_k,
             rerank=settings.agent_rerank and self.reranker is not None,
+            telemetry=self.telemetry,
         )
 
     def get_agent_run(self) -> GetAgentRun:
@@ -255,3 +298,13 @@ class Container:
         await self._embedding_client.close()
         await self._llm_client.close()
         await self.database.dispose()
+
+
+def _provider_name(base_url: str) -> str:
+    """`gen_ai.provider.name` for traces, guessed from the endpoint."""
+    url = base_url.lower()
+    if "openai.com" in url:
+        return "openai"
+    if ":11434" in url or "ollama" in url:
+        return "ollama"
+    return "openai_compatible"

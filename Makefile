@@ -1,10 +1,14 @@
 .DEFAULT_GOAL := help
-.PHONY: help install run worker api-key ingest-samples ingest-benchmark benchmark-docs eval eval-retrieval up down logs fmt lint typecheck arch test test-integration check migrate migration downgrade
+.PHONY: help install install-base obs-grafana obs-langfuse obs-up obs-down run worker api-key ingest-samples ingest-benchmark benchmark-docs eval eval-retrieval up down logs fmt lint typecheck arch test test-integration check migrate migration downgrade
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-install: ## Install dependencies and git hooks
+install: ## Install dependencies (incl. the rerank and docling extras) and git hooks
+	uv sync --extra rerank --extra docling
+	uv run pre-commit install
+
+install-base: ## Install without the optional extras (no PyTorch; smaller, like CI)
 	uv sync
 	uv run pre-commit install
 
@@ -38,6 +42,18 @@ up: ## Start the Docker stack (Postgres, migrations, API, worker) at http://loca
 
 down: ## Stop the Docker stack (data volumes are kept; add -v to delete them)
 	docker compose down
+
+obs-grafana: ## Start Grafana LGTM (traces, metrics, logs) at http://localhost:3000
+	docker compose -f observability/grafana/docker-compose.yml up -d
+
+obs-langfuse: ## Start Langfuse (LLM traces) at http://localhost:3001
+	docker compose -f observability/langfuse/docker-compose.yml up -d
+
+obs-up: obs-grafana obs-langfuse ## Start both observability stacks
+
+obs-down: ## Stop both observability stacks (data is kept; add -v to delete it)
+	docker compose -f observability/grafana/docker-compose.yml down
+	docker compose -f observability/langfuse/docker-compose.yml down
 
 logs: ## Follow logs of the Docker stack
 	docker compose logs -f api worker

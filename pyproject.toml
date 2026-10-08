@@ -10,6 +10,11 @@ dependencies = [
     "asyncpg>=0.32.0",
     "fastapi>=0.142.2",
     "openai>=3.26.0",
+    "opentelemetry-api>=1.45.1",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.1",
+    "opentelemetry-instrumentation-fastapi>=0.66b1",
+    "opentelemetry-instrumentation-sqlalchemy>=0.66b1",
+    "opentelemetry-sdk>=1.45.1",
     "pgvector>=0.5.0",
     "pydantic-settings>=2.15.0",
     "pypdf>=6.19.0",
@@ -25,6 +30,13 @@ dependencies = [
 # is opt-in: uv sync --extra rerank
 rerank = [
     "sentence-transformers>=5.0.0",
+]
+# Layout-aware PDF parsing with tables and OCR (PDF_PARSER=docling). Also pulls in
+# PyTorch, plus an OCR engine: macOS Vision on a Mac, RapidOCR (ONNX) elsewhere.
+docling = [
+    "docling>=2.0",
+    "ocrmac>=1.0 ; sys_platform == 'darwin'",
+    "onnxruntime>=1.20",
 ]
 
 [project.scripts]
@@ -94,6 +106,13 @@ exclude = ["^alembic/"]
 module = ["asyncpg.*", "pgvector.*", "testcontainers.*", "sentence_transformers.*", "torch.*"]
 ignore_missing_imports = true
 
+# Optional extra (uv sync --extra docling): typed as Any whether installed or not, so
+# CI (without the extra) and a full local install check the same thing.
+[[tool.mypy.overrides]]
+module = ["docling.*", "docling_core.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
 # ---------------------------------------------------------------------------
 # Pytest
 # ---------------------------------------------------------------------------
@@ -141,7 +160,7 @@ forbidden_modules = ["app.core", "fastapi", "starlette", "sqlalchemy", "pydantic
 name = "Application does not depend on frameworks or drivers"
 type = "forbidden"
 source_modules = ["app.application"]
-forbidden_modules = ["app.core", "fastapi", "starlette", "sqlalchemy", "openai"]
+forbidden_modules = ["app.core", "fastapi", "starlette", "sqlalchemy", "openai", "opentelemetry"]
 
 [[tool.importlinter.contracts]]
 name = "Presentation reaches infrastructure only through the composition root"

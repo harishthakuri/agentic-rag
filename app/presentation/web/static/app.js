@@ -428,6 +428,9 @@ class AssistantTurn {
         this.text += data.text;
         this.scheduleRender();
         break;
+      case "revising": // the draft cited no sources; the model is asked to add them
+        this.meta.replaceChildren(el("span", { className: "hint", text: "The draft cites no sources: asking the model to add citations…" }));
+        break;
       case "done":
         this.finish(data);
         break;
@@ -479,6 +482,8 @@ class AssistantTurn {
     this.meta.textContent = parts.join(" · ");
     if (done.answer_withheld) {
       this.meta.append(el("span", { className: "warn", text: " · draft answer withheld: it cited no sources" }));
+    } else if (done.answer_revised) {
+      this.meta.append(el("span", { className: "hint", text: " · citations added in a second pass" }));
     } else if (done.invalid_citations.length) {
       this.meta.append(el("span", { className: "warn", text: ` · cites unknown sources ${done.invalid_citations.map((n) => `[${n}]`).join("")}` }));
     } else if (!cited.size && this.text && !/couldn.t find/i.test(this.text)) {

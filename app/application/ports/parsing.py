@@ -19,6 +19,7 @@ class Section:
 class ParsedDocument:
     title: str | None
     sections: list[Section] = field(default_factory=list)
+    parser: str = ""  # which parser produced it, for traces and metrics (e.g. "docling")
 
 
 class DocumentParser(Protocol):

@@ -20,6 +20,7 @@ from app.application.dto.pagination import PageRequest
 from app.application.use_cases.answering import (
     AnswerCompleted,
     AnswerDelta,
+    AnswerRevising,
     AskEvent,
     AskQuery,
     SourcesFound,
@@ -181,7 +182,8 @@ async def search(
     responses={
         200: {
             "description": "JSON answer, or with `stream: true` a `text/event-stream` of "
-            "`sources`, `token` (repeated), then `done` (or `error`) events",
+            "`sources`, `token` (repeated), `revising` (only if the draft cited nothing), "
+            "then `done` (or `error`) events",
             "content": {"text/event-stream": {}},
         },
         503: PROBLEM_RESPONSES[422],
@@ -235,5 +237,7 @@ def _to_sse(event: AskEvent) -> str:
             return sse_event("sources", payload)
         case AnswerDelta(text=text):
             return sse_event("token", TokenEvent(text=text))
+        case AnswerRevising():
+            return sse_event("revising", {})
         case AnswerCompleted():
             return sse_event("done", DoneEvent.from_domain(event))

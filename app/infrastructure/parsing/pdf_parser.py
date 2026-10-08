@@ -33,13 +33,21 @@ class PdfParser:
             title = _title(reader)
         except (PdfReadError, ValueError, KeyError) as exc:
             raise UnparseableDocumentError(f"invalid PDF ({exc})") from exc
-        return ParsedDocument(title=title, sections=sections)
+        return ParsedDocument(title=title, sections=sections, parser="pypdf")
 
 
 def _clean(text: str) -> str:
     text = _HYPHENATED_LINE_BREAK.sub(r"\1\2", text)  # "embed-\nding" → "embedding"
     text = _TRAILING_SPACES.sub("\n", text)
     return _EXCESS_BLANK_LINES.sub("\n\n", text).strip()
+
+
+def metadata_title(content: bytes) -> str | None:
+    """The title in the PDF's metadata, if it is a useful one."""
+    try:
+        return _title(PdfReader(io.BytesIO(content)))
+    except (PdfReadError, ValueError, KeyError):
+        return None
 
 
 def _title(reader: PdfReader) -> str | None:

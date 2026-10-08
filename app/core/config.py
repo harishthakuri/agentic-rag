@@ -24,6 +24,20 @@ class RerankerKind(StrEnum):
     CROSS_ENCODER = "cross_encoder"
 
 
+class PdfParserKind(StrEnum):
+    PYPDF = "pypdf"
+    DOCLING = "docling"
+
+
+class DoclingOcr(StrEnum):
+    AUTO = "auto"  # macOS Vision on a Mac (ocrmac), otherwise RapidOCR
+    OCRMAC = "ocrmac"
+    RAPIDOCR = "rapidocr"
+    EASYOCR = "easyocr"
+    TESSERACT = "tesseract"
+    OFF = "off"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -76,6 +90,13 @@ class Settings(BaseSettings):
     # A running job whose worker hasn't finished within the lease is assumed crashed
     # and handed to another worker.
     worker_job_lease_seconds: int = Field(default=900, gt=0)
+    # PDF_PARSER=docling (needs `uv sync --extra docling`): headings, tables and OCR
+    # from small local models, slower than pypdf. Falls back to pypdf if it fails.
+    pdf_parser: PdfParserKind = PdfParserKind.PYPDF
+    docling_ocr: DoclingOcr = DoclingOcr.AUTO  # for pages without a text layer (scans)
+    docling_tables: bool = True  # rebuild table rows and columns (TableFormer)
+    # Then fall back to pypdf. Keep it well below WORKER_JOB_LEASE_SECONDS.
+    docling_timeout_seconds: float = Field(default=600, gt=0)
 
     # --- Retrieval ---------------------------------------------------------
     reranker: RerankerKind = RerankerKind.LLM
@@ -112,6 +133,17 @@ class Settings(BaseSettings):
 
     # --- Storage -----------------------------------------------------------
     storage_dir: Path = Path("./data/uploads")
+
+    # --- Observability (OpenTelemetry; see docs/OBSERVABILITY_PLAN.md) ------
+    observability_enabled: bool = False  # off: nothing is recorded, no overhead
+    otlp_endpoint: str = ""  # Grafana LGTM, e.g. http://localhost:4318 (empty: don't send)
+    langfuse_base_url: str = ""  # e.g. http://localhost:3001 (empty: don't send)
+    langfuse_public_key: str = ""
+    langfuse_secret_key: SecretStr = SecretStr("")
+    # Prompts, sources and answers on spans: sent to Langfuse only, never to Grafana.
+    observability_capture_content: bool = False
+    observability_sample_ratio: float = Field(default=1.0, ge=0, le=1)
+    observability_environment: str = "dev"
 
     @field_validator("database_url", "migrations_database_url")
     @classmethod

@@ -45,3 +45,21 @@ def test_cross_encoder_without_the_extra_is_a_configuration_error(
     )
     with pytest.raises(ConfigurationError, match="--extra rerank"):
         Container(settings.model_copy(update={"reranker": RerankerKind.CROSS_ENCODER}))
+
+
+def test_docling_without_the_extra_is_a_configuration_error(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import importlib.util
+
+    from app.bootstrap.container import ConfigurationError, Container
+    from app.core.config import PdfParserKind
+
+    real_find_spec = importlib.util.find_spec
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name, *a: None if name == "docling" else real_find_spec(name, *a),
+    )
+    with pytest.raises(ConfigurationError, match="--extra docling"):
+        Container(settings.model_copy(update={"pdf_parser": PdfParserKind.DOCLING}))

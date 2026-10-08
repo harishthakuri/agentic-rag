@@ -9,4 +9,6 @@ class PlainTextParser:
             text = content.decode("utf-8-sig").replace("\r\n", "\n").strip()
         except UnicodeDecodeError as exc:
             raise UnparseableDocumentError("not valid UTF-8") from exc
-        return ParsedDocument(title=None, sections=[Section(text=text)] if text else [])
+        return ParsedDocument(
+            title=None, sections=[Section(text=text)] if text else [], parser="text"
+        )

@@ -1,12 +1,15 @@
+from collections.abc import Sequence
 from uuid import UUID
 
 import pytest
 
+from app.application.ports.chat import ChatMessage, ChatModelError
 from app.application.ports.search import ChunkMatch
 from app.application.prompts import answer as prompts
 from app.application.use_cases.answering import (
     AnswerCompleted,
     AnswerDelta,
+    AnswerRevising,
     AskQuery,
     AskQuestion,
     ContextBuilder,
@@ -158,22 +161,68 @@ async def test_prompt_contains_delimited_sources_and_question(
 
 
 async def test_uncited_answer_is_withheld(store: InMemoryStore, collection_id: UUID) -> None:
+    # An answer from memory: the retry to add citations can't ground it either.
     chat = FakeChatModel("CronJobs take a timeZone field since v1.30.")
     events = [e async for e in _ask(store, chat).stream(AskQuery(collection_id, "ingress"))]
 
-    # The draft was streamed, then the final event replaces it.
+    # The draft was streamed, the retry announced, then the final event replaces it.
     assert any(isinstance(e, AnswerDelta) for e in events)
+    assert isinstance(events[-2], AnswerRevising)
     done = events[-1]
     assert isinstance(done, AnswerCompleted)
     assert done.withheld and done.answer == prompts.UNGROUNDED_ANSWER
+    assert not done.revised
+    assert len(chat.calls) == 2  # the draft and one retry, no more
 
 
 async def test_cited_answer_and_decline_are_not_withheld(
     store: InMemoryStore, collection_id: UUID
 ) -> None:
     for reply in ("Ingress routes HTTP [1].", "I couldn't find this in the documents."):
-        result = await _ask(store, FakeChatModel(reply)).execute(AskQuery(collection_id, "ingress"))
-        assert not result.withheld and result.answer == reply
+        chat = FakeChatModel(reply)
+        result = await _ask(store, chat).execute(AskQuery(collection_id, "ingress"))
+        assert not result.withheld and not result.revised and result.answer == reply
+        assert len(chat.calls) == 1  # no retry needed
+
+
+async def test_uncited_draft_gets_one_retry_to_add_citations(
+    store: InMemoryStore, collection_id: UUID
+) -> None:
+    draft = "A quick buck is profit earned quickly. Examples from the text: ..."
+    chat = FakeChatModel([draft, "A quick buck is profit earned quickly 【1】."])
+    events = [e async for e in _ask(store, chat).stream(AskQuery(collection_id, "ingress"))]
+
+    done = events[-1]
+    assert isinstance(done, AnswerCompleted)
+    assert done.revised and not done.withheld
+    assert done.answer == "A quick buck is profit earned quickly [1]."  # normalised
+    assert done.cited == [1]
+    assert done.usage is not None and done.usage.prompt_tokens == 200  # both calls
+    assert "repair" in done.timings_ms
+    # The retry continues the same conversation: same sources, then the draft.
+    first, retry = chat.calls
+    assert retry[:2] == first
+    assert retry[2] == ChatMessage("assistant", draft)
+    assert retry[3] == ChatMessage("user", prompts.CITATION_REPAIR_PROMPT)
+
+
+async def test_retry_may_decline(store: InMemoryStore, collection_id: UUID) -> None:
+    chat = FakeChatModel(["From memory.", "I couldn't find this in the documents."])
+    result = await _ask(store, chat).execute(AskQuery(collection_id, "ingress"))
+    assert result.revised and not result.withheld
+    assert result.answer == "I couldn't find this in the documents."
+
+
+async def test_failed_retry_withholds_instead_of_failing(
+    store: InMemoryStore, collection_id: UUID
+) -> None:
+    def reply(messages: Sequence[ChatMessage]) -> str:
+        if messages[-1].content == prompts.CITATION_REPAIR_PROMPT:
+            raise ChatModelError("simulated outage")
+        return "From memory."
+
+    result = await _ask(store, FakeChatModel(reply)).execute(AskQuery(collection_id, "ingress"))
+    assert result.withheld and result.answer == prompts.UNGROUNDED_ANSWER
 
 
 async def test_invalid_citations_are_reported(store: InMemoryStore, collection_id: UUID) -> None:

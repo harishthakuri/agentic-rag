@@ -7,8 +7,11 @@ and especially embedding) runs with no transaction open, so no locks or
 connections are held while the embedding model works.
 """
 
+import asyncio
 import logging
-from collections.abc import Sequence
+import time
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
 from uuid import UUID
@@ -17,6 +20,14 @@ from app.application.ports.chunking import ChunkDraft, Chunker
 from app.application.ports.embeddings import EmbeddingProvider
 from app.application.ports.parsing import ParserRegistry, UnparseableDocumentError
 from app.application.ports.storage import FileStorage
+from app.application.ports.telemetry import (
+    INGESTION_DURATION,
+    INGESTION_JOBS,
+    NOOP_TELEMETRY,
+    PARSE_FALLBACKS,
+    Span,
+    Telemetry,
+)
 from app.application.ports.unit_of_work import UnitOfWorkFactory
 from app.domain.exceptions import DomainError
 from app.domain.models import Chunk, Collection, Document, DocumentStatus, IngestionJob
@@ -50,6 +61,7 @@ class ProcessNextIngestionJob:
         embedder: EmbeddingProvider,
         *,
         lease: timedelta,
+        telemetry: Telemetry = NOOP_TELEMETRY,
     ) -> None:
         self._uow_factory = uow_factory
         self._storage = storage
@@ -57,6 +69,7 @@ class ProcessNextIngestionJob:
         self._chunker = chunker
         self._embedder = embedder
         self._lease = lease
+        self._telemetry = telemetry
 
     async def execute(self, worker_id: str) -> JobOutcome | None:
         """Process one job. Returns None when there is nothing to do."""
@@ -65,12 +78,56 @@ class ProcessNextIngestionJob:
             return None
         job, document, collection = claimed
 
-        try:
-            chunks, discovered_title = await self._build_chunks(document, collection)
-        except Exception as exc:
-            return await self._record_failure(job.id, document.id, exc)
+        started = time.perf_counter()
+        labels = {"document_type": document.document_type.name.lower()}  # e.g. "pdf"
+        with self._telemetry.span(
+            "ingestion.job",
+            kind="chain",
+            trace_name="ingestion",
+            attributes={
+                "rag.job.id": str(job.id),
+                "rag.job.attempt": job.attempts,
+                "rag.document.id": str(document.id),
+                "rag.document.type": document.document_type.value,
+                "rag.document.bytes": document.size_bytes,
+                "rag.collection.id": str(collection.id),
+            },
+        ) as span:
+            try:
+                chunks, discovered_title = await self._build_chunks(document, collection, labels)
+            except Exception as exc:
+                span.fail(exc)
+                outcome = await self._record_failure(job.id, document.id, exc)
+            else:
+                with self._step("store", labels):
+                    outcome = await self._store(job.id, document.id, chunks, discovered_title)
+            status = (
+                "succeeded" if outcome.succeeded else "retrying" if outcome.will_retry else "failed"
+            )
+            span.set(
+                {
+                    "rag.job.status": status,
+                    "rag.chunks": outcome.chunk_count,
+                    "rag.job.error": outcome.error,
+                }
+            )
+        self._telemetry.count(INGESTION_JOBS, labels={**labels, "status": status})
+        self._telemetry.record(
+            INGESTION_DURATION, time.perf_counter() - started, {**labels, "step": "total"}
+        )
+        return outcome
 
-        return await self._store(job.id, document.id, chunks, discovered_title)
+    @contextmanager
+    def _step(self, name: str, labels: dict[str, str]) -> Iterator[Span]:
+        """A span and a duration metric for one step of the job."""
+        started = time.perf_counter()
+        try:
+            with self._telemetry.span(f"ingestion.{name}") as span:
+                yield span
+        finally:
+            self._telemetry.record(
+                INGESTION_DURATION, time.perf_counter() - started, {**labels, "step": name}
+            )
 
     # --- Step 1: claim (short transaction) --------------------------------
     async def _claim(self, worker_id: str) -> tuple[IngestionJob, Document, Collection] | None:
@@ -91,7 +148,7 @@ class ProcessNextIngestionJob:
 
     # --- Step 2: the slow part (no transaction) ----------------------------
     async def _build_chunks(
-        self, document: Document, collection: Collection
+        self, document: Document, collection: Collection, labels: dict[str, str]
     ) -> tuple[list[Chunk], str | None]:
         """Returns the chunks and, if the user gave no title, one found in the document."""
         if collection.embedding != self._embedder.spec:
@@ -102,20 +159,38 @@ class ProcessNextIngestionJob:
             )
 
         content = await self._storage.read(document.storage_key)
-        try:
-            parsed = self._parsers.for_type(document.document_type).parse(content)
-        except UnparseableDocumentError as exc:
-            raise PermanentIngestionError(f"Could not parse the file: {exc}") from exc
+        with self._step("parse", labels) as span:
+            try:
+                # Parsing is CPU-bound and can be slow (Docling: seconds to minutes per
+                # PDF), so it runs in a thread instead of blocking the event loop.
+                parser = self._parsers.for_type(document.document_type)
+                parsed = await asyncio.to_thread(parser.parse, content)
+            except UnparseableDocumentError as exc:
+                raise PermanentIngestionError(f"Could not parse the file: {exc}") from exc
+            pages = {s.page for s in parsed.sections if s.page is not None}
+            span.set(
+                {
+                    "rag.parser": parsed.parser,
+                    "rag.sections": len(parsed.sections),
+                    "rag.pages": len(pages) or None,
+                }
+            )
+        labels["parser"] = parsed.parser
+        if parsed.parser.endswith("-fallback"):
+            self._telemetry.count(PARSE_FALLBACKS)
 
         discovered_title = (
             parsed.title if document.metadata.get("title_source") == "filename" else None
         )
-        drafts = self._chunker.chunk(parsed, title=discovered_title or document.title)
+        with self._step("chunk", labels) as span:
+            drafts = self._chunker.chunk(parsed, title=discovered_title or document.title)
+            span.set({"rag.chunks": len(drafts), "rag.tokens": sum(d.token_count for d in drafts)})
         if not drafts:
             raise PermanentIngestionError("The document contains no extractable text")
 
         # The contextual text (title + headings + body) is what gets embedded.
-        vectors = await self._embedder.embed_documents([d.contextual_text for d in drafts])
+        with self._step("embed", labels):
+            vectors = await self._embedder.embed_documents([d.contextual_text for d in drafts])
         return _to_chunks(document, drafts, vectors), discovered_title
 
     # --- Step 3: store (short transaction) ---------------------------------

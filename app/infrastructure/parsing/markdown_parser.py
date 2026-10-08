@@ -60,4 +60,4 @@ class MarkdownParser:
             buffer.append(line)
         flush()
 
-        return ParsedDocument(title=title, sections=sections)
+        return ParsedDocument(title=title, sections=sections, parser="markdown")

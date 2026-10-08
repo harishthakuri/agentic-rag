@@ -15,7 +15,8 @@ more LLM calls and time. Guards keep it bounded:
 - tool errors (bad arguments, unknown tools, repeated searches) are returned to
   the model as text, so it can correct itself instead of crashing the run
 - grounding: a final answer that cites none of the passages (and doesn't decline)
-  is withheld, because it came from the model's memory, not the documents
+  gets one retry to add its citations; if it still cites nothing it is withheld,
+  because it came from the model's memory, not the documents
 
 Every run and step is stored (see AgentRun), so you can replay how it reasoned.
 """
@@ -31,20 +32,29 @@ from uuid import UUID
 from app.application.ports.chat import (
     ChatMessage,
     ChatModel,
+    ChatModelError,
     CompletionDone,
     TextDelta,
     TokenUsage,
     ToolCall,
 )
+from app.application.ports.telemetry import (
+    AGENT_TOOL_CALLS,
+    ANSWERS,
+    NOOP_TELEMETRY,
+    Span,
+    Telemetry,
+)
 from app.application.ports.unit_of_work import UnitOfWorkFactory
 from app.application.prompts import agent as prompts
 from app.application.prompts.answer import UNGROUNDED_ANSWER
-from app.application.use_cases.answering import AnswerDelta
+from app.application.use_cases.answering import AnswerDelta, AnswerRevising
 from app.application.use_cases.answering.citations import (
     check_citations,
     is_grounded,
     normalize_citation_marks,
 )
+from app.application.use_cases.answering.grounding import add_missing_citations, answer_outcome
 from app.application.use_cases.collections import CollectionNotFoundError
 from app.application.use_cases.retrieval import SearchCollection
 from app.domain.exceptions import DomainValidationError, NotFoundError
@@ -78,7 +88,8 @@ class AgentQuery:
             raise DomainValidationError("max_tool_calls must be between 1 and 12")
 
 
-# --- Events (RunStarted, then ToolCalled/ToolReturned pairs, AnswerDelta*, AgentCompleted)
+# --- Events (RunStarted, then ToolCalled/ToolReturned pairs, AnswerDelta*, [AnswerRevising],
+# AgentCompleted)
 @dataclass(frozen=True, slots=True)
 class RunStarted:
     run_id: UUID
@@ -111,9 +122,10 @@ class AgentCompleted:
     usage: TokenUsage
     timings_ms: dict[str, float] = field(default_factory=dict)
     withheld: bool = False  # the model's answer cited nothing and was replaced
+    revised: bool = False  # the draft cited nothing; `answer` is its rewrite with citations
 
 
-AgentEvent = RunStarted | ToolCalled | ToolReturned | AnswerDelta | AgentCompleted
+AgentEvent = RunStarted | ToolCalled | ToolReturned | AnswerDelta | AnswerRevising | AgentCompleted
 
 
 class AgentAsk:
@@ -128,6 +140,7 @@ class AgentAsk:
         timeout_seconds: float = 180.0,
         search_top_k: int = 5,
         rerank: bool = False,
+        telemetry: Telemetry = NOOP_TELEMETRY,
     ) -> None:
         self._uow_factory = uow_factory
         self._search = search
@@ -137,22 +150,49 @@ class AgentAsk:
         self._timeout = timeout_seconds
         self._search_top_k = search_top_k
         self._rerank = rerank
+        self._telemetry = telemetry
 
     async def stream(self, query: AgentQuery) -> AsyncIterator[AgentEvent]:
+        # Started here, made current only around awaits (see ports/telemetry.py).
+        root = self._telemetry.start_span(
+            "rag.agent",
+            kind="agent",
+            trace_name="agent",
+            attributes={
+                "gen_ai.operation.name": "invoke_agent",
+                "rag.collection.id": str(query.collection_id),
+                "rag.question.chars": len(query.question),
+            },
+        )
+        root.content(input=query.question)
+        try:
+            async for event in self._run(query, root):
+                yield event
+        except BaseException as exc:  # incl. timeouts and client disconnects
+            root.fail(exc)
+            raise
+        finally:
+            root.end()
+
+    async def _run(self, query: AgentQuery, root: Span) -> AsyncIterator[AgentEvent]:
         started = time.perf_counter()
-        async with self._uow_factory() as uow:
-            if await uow.collections.get(query.collection_id) is None:
-                raise CollectionNotFoundError(query.collection_id)
-            run = AgentRun(
-                collection_id=query.collection_id, question=query.question, model=self._chat.model
-            )
-            await uow.agent_runs.add(run)
-            await uow.commit()
+        with root.activate():
+            async with self._uow_factory() as uow:
+                if await uow.collections.get(query.collection_id) is None:
+                    raise CollectionNotFoundError(query.collection_id)
+                run = AgentRun(
+                    collection_id=query.collection_id,
+                    question=query.question,
+                    model=self._chat.model,
+                )
+                await uow.agent_runs.add(run)
+                await uow.commit()
+        root.set({"rag.agent.run_id": str(run.id)})
         yield RunStarted(run.id)
 
         try:
             async with asyncio.timeout(self._timeout):
-                async for event in self._loop(run, query, started):
+                async for event in self._loop(run, query, started, root):
                     yield event
         except TimeoutError as exc:
             await self._fail(run, f"timed out after {self._timeout:.0f}s", started)
@@ -162,7 +202,7 @@ class AgentAsk:
             raise
 
     async def _loop(
-        self, run: AgentRun, query: AgentQuery, started: float
+        self, run: AgentRun, query: AgentQuery, started: float, root: Span
     ) -> AsyncIterator[AgentEvent]:
         limit = query.max_tool_calls or self._max_tool_calls
         registry = SourceRegistry()
@@ -193,7 +233,9 @@ class AgentAsk:
             parts: list[str] = []
             requested: tuple[ToolCall, ...] = ()
             llm_started = time.perf_counter()
-            async for event in self._chat.stream(messages, () if tools_withdrawn else TOOLS):
+            with root.activate():  # each model turn is a child of rag.agent
+                turn = self._chat.stream(messages, () if tools_withdrawn else TOOLS)
+            async for event in turn:
                 match event:
                     case TextDelta(text=raw):
                         text = normalize_citation_marks(raw)
@@ -219,29 +261,93 @@ class AgentAsk:
                 tool_calls += 1
                 yield ToolCalled(tool_calls, call.name, parse_arguments(call))
                 tool_started = time.perf_counter()
-                outcome = await toolbox.run(call)
+                with (
+                    root.activate(),
+                    self._telemetry.span(
+                        f"execute_tool {call.name}",
+                        kind="tool",
+                        attributes={
+                            "gen_ai.operation.name": "execute_tool",
+                            "gen_ai.tool.name": call.name,
+                            "gen_ai.tool.call.id": call.id,
+                            "rag.agent.step": tool_calls,
+                        },
+                    ) as tool_span,
+                ):
+                    outcome = await toolbox.run(call)
+                    tool_span.set({"rag.tool.error": outcome.summary.get("error")})
+                    tool_span.content(input=outcome.arguments, output=outcome.summary)
                 latency = _ms(tool_started)
                 timings["tools"] += latency
                 messages.append(ChatMessage("tool", outcome.content, tool_call_id=call.id))
-                await self._record_step(run, tool_calls, call, outcome, latency)
+                with root.activate():
+                    await self._record_step(run, tool_calls, call, outcome, latency)
                 yield ToolReturned(tool_calls, call.name, outcome.summary, latency)
 
         citations = check_citations(answer, len(registry))
         # Exception: a question about the collection itself ("which documents are
         # there?") is answered from list_documents, which has no passages to cite.
         about_collection = len(registry) == 0 and toolbox.listed_documents
-        withheld = not is_grounded(answer, citations) and not about_collection
-        if withheld:
-            logger.warning(
-                "Agent run %s: withheld an answer that cited no sources: %.500s", run.id, answer
+        revised = False
+        needs_repair = not is_grounded(answer, citations) and len(registry) > 0
+        if needs_repair:
+            yield AnswerRevising()
+        with root.activate(), self._telemetry.span("rag.grounding", kind="guardrail") as check:
+            check.set({"rag.citations.draft": len(citations.cited), "rag.repair": needs_repair})
+            if needs_repair:
+                repair_started = time.perf_counter()
+                try:
+                    repair = await add_missing_citations(self._chat, messages, answer)
+                except ChatModelError:
+                    logger.warning("Agent run %s: citation repair failed", run.id, exc_info=True)
+                else:
+                    if repair.usage:
+                        usage = usage + repair.usage
+                    repaired = check_citations(repair.answer, len(registry))
+                    if is_grounded(repair.answer, repaired):
+                        logger.info("Agent run %s: added missing citations to a draft", run.id)
+                        answer, citations, revised = repair.answer, repaired, True
+                timings["llm"] += _ms(repair_started)
+            withheld = not is_grounded(answer, citations) and not about_collection
+            if withheld:
+                logger.warning(
+                    "Agent run %s: withheld an answer that cited no sources: %.500s",
+                    run.id,
+                    answer,
+                )
+                answer = UNGROUNDED_ANSWER  # invalid citations stay reported
+            check.set(
+                {
+                    "rag.citations.cited": len(citations.cited),
+                    "rag.citations.invalid": len(citations.invalid),
+                    "rag.answer.revised": revised,
+                    "rag.answer.withheld": withheld,
+                }
             )
-            answer = UNGROUNDED_ANSWER  # invalid citations stay reported
         timings["total"] = _ms(started)
         run.record_usage(usage.prompt_tokens, usage.completion_tokens)
         run.succeed(answer, timings["total"])
-        async with self._uow_factory() as uow:
-            await uow.agent_runs.update(run)
-            await uow.commit()
+        with root.activate():
+            async with self._uow_factory() as uow:
+                await uow.agent_runs.update(run)
+                await uow.commit()
+        outcome_name = (
+            "overview"
+            if about_collection and not citations.cited
+            else answer_outcome(citations.cited, revised=revised, withheld=withheld)
+        )
+        root.set(
+            {
+                "rag.answer.outcome": outcome_name,
+                "rag.agent.tool_calls": tool_calls,
+                "rag.sources": len(registry),
+                "rag.usage.input_tokens": usage.prompt_tokens,
+                "rag.usage.output_tokens": usage.completion_tokens,
+            }
+        )
+        root.content(output=answer)
+        self._telemetry.count(ANSWERS, labels={"mode": "agent", "outcome": outcome_name})
+        self._telemetry.record(AGENT_TOOL_CALLS, tool_calls)
         yield AgentCompleted(
             run_id=run.id,
             answer=answer,
@@ -253,6 +359,7 @@ class AgentAsk:
             usage=usage,
             timings_ms=timings,
             withheld=withheld,
+            revised=revised,
         )
 
     async def _record_step(

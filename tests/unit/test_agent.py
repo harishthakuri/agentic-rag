@@ -8,7 +8,7 @@ import pytest
 from app.application.ports.chat import ChatMessage, ChatStreamEvent, ToolCall, ToolSpec
 from app.application.ports.unit_of_work import UnitOfWorkFactory
 from app.application.prompts import agent as prompts
-from app.application.prompts.answer import UNGROUNDED_ANSWER
+from app.application.prompts.answer import CITATION_REPAIR_PROMPT, UNGROUNDED_ANSWER
 from app.application.use_cases.agent import (
     AgentAsk,
     AgentCompleted,
@@ -19,7 +19,7 @@ from app.application.use_cases.agent import (
     ToolReturned,
 )
 from app.application.use_cases.agent.tools import AgentToolbox, SourceRegistry
-from app.application.use_cases.answering import AnswerDelta
+from app.application.use_cases.answering import AnswerDelta, AnswerRevising
 from app.application.use_cases.collections import CollectionNotFoundError
 from app.application.use_cases.retrieval import SearchCollection
 from app.domain.models import RunStatus
@@ -164,6 +164,38 @@ async def test_uncited_answer_is_withheld_and_not_stored(
 
     assert done.withheld and done.answer == UNGROUNDED_ANSWER
     assert store.agent_runs[done.run_id].answer == UNGROUNDED_ANSWER
+
+
+async def test_uncited_draft_gets_one_retry_to_add_citations(
+    store: InMemoryStore, uow: UnitOfWorkFactory, collection_id: UUID
+) -> None:
+    chat = FakeChatModel(
+        [
+            [_call("search_knowledge_base", query="ingress")],
+            "Ingress routes HTTP traffic.",
+            "Ingress routes HTTP traffic [1].",
+        ]
+    )
+    done, events = await _agent(uow, chat).execute(AgentQuery(collection_id, "ingress?"))
+
+    assert any(isinstance(e, AnswerRevising) for e in events)
+    assert done.revised and not done.withheld
+    assert done.answer == "Ingress routes HTTP traffic [1]." and done.cited == [1]
+    assert store.agent_runs[done.run_id].answer == done.answer
+    retry = chat.calls[-1]
+    assert retry[-2] == ChatMessage("assistant", "Ingress routes HTTP traffic.")
+    assert retry[-1] == ChatMessage("user", CITATION_REPAIR_PROMPT)
+    assert chat.tools_offered[-1] == []  # no more searching during the retry
+
+
+async def test_no_retry_when_nothing_was_searched(
+    uow: UnitOfWorkFactory, collection_id: UUID
+) -> None:
+    # Without passages there is nothing to cite, so a retry can't help.
+    chat = FakeChatModel(["From memory."])
+    done = (await _agent(uow, chat).execute(AgentQuery(collection_id, "?")))[0]
+    assert done.withheld and not done.revised
+    assert len(chat.calls) == 1
 
 
 async def test_decline_and_collection_overview_are_not_withheld(
