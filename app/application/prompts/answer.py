@@ -26,6 +26,12 @@ NO_SOURCES_ANSWER = (
     "I couldn't find anything relevant to this question in the documents of this collection."
 )
 
+# Replaces an answer that cited no sources (see citations.is_grounded).
+UNGROUNDED_ANSWER = (
+    "I couldn't find a supported answer in the documents. A draft answer cited no "
+    "sources, so it was withheld instead of being shown as fact."
+)
+
 
 def user_prompt(question: str, sources: Sequence["ContextSource"]) -> str:
     # XML-style delimiters make clear where each untrusted source starts and ends.

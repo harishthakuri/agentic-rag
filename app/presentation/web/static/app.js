@@ -477,7 +477,9 @@ class AssistantTurn {
     if (done.usage) parts.push(`${done.usage.prompt_tokens + done.usage.completion_tokens} tokens`);
     if (done.model) parts.push(done.model);
     this.meta.textContent = parts.join(" · ");
-    if (done.invalid_citations.length) {
+    if (done.answer_withheld) {
+      this.meta.append(el("span", { className: "warn", text: " · draft answer withheld: it cited no sources" }));
+    } else if (done.invalid_citations.length) {
       this.meta.append(el("span", { className: "warn", text: ` · cites unknown sources ${done.invalid_citations.map((n) => `[${n}]`).join("")}` }));
     } else if (!cited.size && this.text && !/couldn.t find/i.test(this.text)) {
       this.meta.append(el("span", { className: "warn", text: " · no citations" }));

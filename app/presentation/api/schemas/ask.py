@@ -64,6 +64,9 @@ class AskResponse(BaseModel):
     usage: UsageResponse | None
     reranker: str | None
     timings_ms: dict[str, float]
+    answer_withheld: bool = Field(
+        description="True when the model's answer cited no sources and was replaced"
+    )
 
     @classmethod
     def from_domain(cls, result: AskResult) -> "AskResponse":
@@ -77,6 +80,7 @@ class AskResponse(BaseModel):
             usage=_usage(result.usage),
             reranker=result.search.reranker,
             timings_ms=result.timings_ms,
+            answer_withheld=result.withheld,
         )
 
 
@@ -97,6 +101,7 @@ class DoneEvent(BaseModel):
     model: str | None
     usage: UsageResponse | None
     timings_ms: dict[str, float]
+    answer_withheld: bool  # replaces the streamed tokens with `answer`
 
     @classmethod
     def from_domain(cls, event: AnswerCompleted) -> "DoneEvent":
@@ -107,6 +112,7 @@ class DoneEvent(BaseModel):
             model=event.model,
             usage=_usage(event.usage),
             timings_ms=event.timings_ms,
+            answer_withheld=event.withheld,
         )
 
 

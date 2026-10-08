@@ -7,6 +7,7 @@ as the query. The agent (/agent/ask) instead decides what to search for, and
 how often.
 """
 
+import logging
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -22,6 +23,7 @@ from app.application.ports.chat import (
 from app.application.prompts import answer as prompts
 from app.application.use_cases.answering.citations import (
     check_citations,
+    is_grounded,
     normalize_citation_marks,
 )
 from app.application.use_cases.answering.context import ContextBuilder, ContextSource
@@ -32,6 +34,8 @@ from app.application.use_cases.retrieval import (
     SearchResult,
 )
 from app.domain.exceptions import DomainValidationError
+
+logger = logging.getLogger(__name__)
 
 MAX_QUESTION_LENGTH = 2000
 
@@ -73,6 +77,9 @@ class AnswerCompleted:
     model: str | None  # None when no LLM call was needed
     usage: TokenUsage | None
     timings_ms: dict[str, float]
+    # True when the model's answer cited no sources and was replaced (the streamed
+    # text should then be replaced by `answer`).
+    withheld: bool = False
 
 
 AskEvent = SourcesFound | AnswerDelta | AnswerCompleted
@@ -89,6 +96,7 @@ class AskResult:
     usage: TokenUsage | None
     search: SearchResult
     timings_ms: dict[str, float] = field(default_factory=dict)
+    withheld: bool = False
 
 
 class AskQuestion:
@@ -139,6 +147,10 @@ class AskQuestion:
 
         answer = "".join(parts).strip()
         citations = check_citations(answer, len(sources))
+        withheld = not is_grounded(answer, citations)
+        if withheld:
+            logger.warning("Withheld an answer that cited no sources: %.500s", answer)
+            answer = prompts.UNGROUNDED_ANSWER  # invalid citations stay reported
         timings["generate"] = _ms(generation_started)
         timings["total"] = _ms(started)
         yield AnswerCompleted(
@@ -148,6 +160,7 @@ class AskQuestion:
             model=self._chat.model,
             usage=usage,
             timings_ms=timings,
+            withheld=withheld,
         )
 
     async def execute(self, query: AskQuery) -> AskResult:
@@ -171,6 +184,7 @@ class AskQuestion:
             usage=completed.usage,
             search=sources.search,
             timings_ms=completed.timings_ms,
+            withheld=completed.withheld,
         )
 
 

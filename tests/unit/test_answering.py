@@ -14,6 +14,7 @@ from app.application.use_cases.answering import (
 )
 from app.application.use_cases.answering.citations import (
     check_citations,
+    is_grounded,
     normalize_citation_marks,
 )
 from app.application.use_cases.retrieval import SearchCollection, SearchHit
@@ -38,6 +39,21 @@ from tests.unit.test_retrieval import SPEC, seed_collection
 def test_check_citations(answer: str, cited: list[int], invalid: list[int]) -> None:
     check = check_citations(answer, source_count=3)
     assert (check.cited, check.invalid) == (cited, invalid)
+
+
+@pytest.mark.parametrize(
+    ("answer", "grounded"),
+    [
+        ("Pods get an IP [1].", True),
+        ("I couldn't find this in the documents.", True),
+        ("I couldn\u2019t find this in the documents.", True),  # typographic apostrophe
+        ("Set timeZone in the CronJob spec.", False),  # from the model's memory
+        ("Made up [7].", False),  # cites only a source that doesn't exist
+        ("", False),
+    ],
+)
+def test_is_grounded(answer: str, grounded: bool) -> None:
+    assert is_grounded(answer, check_citations(answer, source_count=3)) is grounded
 
 
 def test_lenticular_brackets_are_normalised_even_when_split() -> None:
@@ -141,11 +157,32 @@ async def test_prompt_contains_delimited_sources_and_question(
     assert user.content.rstrip().endswith("Question: ingress routes http")
 
 
+async def test_uncited_answer_is_withheld(store: InMemoryStore, collection_id: UUID) -> None:
+    chat = FakeChatModel("CronJobs take a timeZone field since v1.30.")
+    events = [e async for e in _ask(store, chat).stream(AskQuery(collection_id, "ingress"))]
+
+    # The draft was streamed, then the final event replaces it.
+    assert any(isinstance(e, AnswerDelta) for e in events)
+    done = events[-1]
+    assert isinstance(done, AnswerCompleted)
+    assert done.withheld and done.answer == prompts.UNGROUNDED_ANSWER
+
+
+async def test_cited_answer_and_decline_are_not_withheld(
+    store: InMemoryStore, collection_id: UUID
+) -> None:
+    for reply in ("Ingress routes HTTP [1].", "I couldn't find this in the documents."):
+        result = await _ask(store, FakeChatModel(reply)).execute(AskQuery(collection_id, "ingress"))
+        assert not result.withheld and result.answer == reply
+
+
 async def test_invalid_citations_are_reported(store: InMemoryStore, collection_id: UUID) -> None:
     result = await _ask(store, FakeChatModel("Something [9].")).execute(
         AskQuery(collection_id, "ingress")
     )
     assert result.invalid_citations == [9]
+    assert result.withheld  # it cited no real source
+    assert result.answer == prompts.UNGROUNDED_ANSWER
 
 
 async def test_no_relevant_sources_means_no_llm_call(

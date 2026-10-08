@@ -127,6 +127,7 @@ class AgentToolbox:
         self._rerank = rerank
         self._max_chars = max_passage_chars
         self._queries: set[str] = set()
+        self.listed_documents = False  # list_documents was called at least once
 
     async def run(self, call: ToolCall) -> ToolOutcome:
         """Never raises for bad input: errors are reported to the model as text,
@@ -198,6 +199,7 @@ class AgentToolbox:
         )
 
     async def _list_documents(self, arguments: dict[str, Any]) -> ToolOutcome:
+        self.listed_documents = True
         async with self._uow_factory() as uow:
             documents = await uow.documents.list_by_collection(
                 self._collection_id, limit=100, offset=0

@@ -91,6 +91,9 @@ class AgentAskResponse(BaseModel):
     model: str
     usage: UsageResponse
     timings_ms: dict[str, float]
+    answer_withheld: bool = Field(
+        description="True when the model's answer cited no sources and was replaced"
+    )
 
     @classmethod
     def from_domain(cls, result: AgentCompleted, steps: list[ToolCallEvent]) -> "AgentAskResponse":
@@ -109,6 +112,7 @@ class AgentAskResponse(BaseModel):
                 completion_tokens=result.usage.completion_tokens,
             ),
             timings_ms=result.timings_ms,
+            answer_withheld=result.withheld,
         )
 
 

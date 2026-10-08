@@ -14,6 +14,8 @@ more LLM calls and time. Guards keep it bounded:
 - wall-clock timeout: the run fails cleanly
 - tool errors (bad arguments, unknown tools, repeated searches) are returned to
   the model as text, so it can correct itself instead of crashing the run
+- grounding: a final answer that cites none of the passages (and doesn't decline)
+  is withheld, because it came from the model's memory, not the documents
 
 Every run and step is stored (see AgentRun), so you can replay how it reasoned.
 """
@@ -36,9 +38,11 @@ from app.application.ports.chat import (
 )
 from app.application.ports.unit_of_work import UnitOfWorkFactory
 from app.application.prompts import agent as prompts
+from app.application.prompts.answer import UNGROUNDED_ANSWER
 from app.application.use_cases.answering import AnswerDelta
 from app.application.use_cases.answering.citations import (
     check_citations,
+    is_grounded,
     normalize_citation_marks,
 )
 from app.application.use_cases.collections import CollectionNotFoundError
@@ -106,6 +110,7 @@ class AgentCompleted:
     model: str
     usage: TokenUsage
     timings_ms: dict[str, float] = field(default_factory=dict)
+    withheld: bool = False  # the model's answer cited nothing and was replaced
 
 
 AgentEvent = RunStarted | ToolCalled | ToolReturned | AnswerDelta | AgentCompleted
@@ -222,6 +227,15 @@ class AgentAsk:
                 yield ToolReturned(tool_calls, call.name, outcome.summary, latency)
 
         citations = check_citations(answer, len(registry))
+        # Exception: a question about the collection itself ("which documents are
+        # there?") is answered from list_documents, which has no passages to cite.
+        about_collection = len(registry) == 0 and toolbox.listed_documents
+        withheld = not is_grounded(answer, citations) and not about_collection
+        if withheld:
+            logger.warning(
+                "Agent run %s: withheld an answer that cited no sources: %.500s", run.id, answer
+            )
+            answer = UNGROUNDED_ANSWER  # invalid citations stay reported
         timings["total"] = _ms(started)
         run.record_usage(usage.prompt_tokens, usage.completion_tokens)
         run.succeed(answer, timings["total"])
@@ -238,6 +252,7 @@ class AgentAsk:
             model=self._chat.model,
             usage=usage,
             timings_ms=timings,
+            withheld=withheld,
         )
 
     async def _record_step(

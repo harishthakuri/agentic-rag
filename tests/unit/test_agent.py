@@ -8,6 +8,7 @@ import pytest
 from app.application.ports.chat import ChatMessage, ChatStreamEvent, ToolCall, ToolSpec
 from app.application.ports.unit_of_work import UnitOfWorkFactory
 from app.application.prompts import agent as prompts
+from app.application.prompts.answer import UNGROUNDED_ANSWER
 from app.application.use_cases.agent import (
     AgentAsk,
     AgentCompleted,
@@ -152,19 +153,48 @@ async def test_agent_searches_then_answers_and_records_the_run(
     assert store.agent_steps[run.id][0].arguments == {"query": "ingress routes http"}
 
 
+async def test_uncited_answer_is_withheld_and_not_stored(
+    store: InMemoryStore, uow: UnitOfWorkFactory, collection_id: UUID
+) -> None:
+    # The searches found passages, but the answer cites none of them.
+    chat = FakeChatModel(
+        [[_call("search_knowledge_base", query="cronjob time zone")], "Use timeZone (v1.30+)."]
+    )
+    done = (await _agent(uow, chat).execute(AgentQuery(collection_id, "time zone?")))[0]
+
+    assert done.withheld and done.answer == UNGROUNDED_ANSWER
+    assert store.agent_runs[done.run_id].answer == UNGROUNDED_ANSWER
+
+
+async def test_decline_and_collection_overview_are_not_withheld(
+    uow: UnitOfWorkFactory, collection_id: UUID
+) -> None:
+    decline = FakeChatModel(
+        [
+            [_call("search_knowledge_base", query="cronjob")],
+            "I couldn't find this in the documents.",
+        ]
+    )
+    overview = FakeChatModel([[_call("list_documents")], "The collection has one guide."])
+
+    for chat in (decline, overview):
+        done = (await _agent(uow, chat).execute(AgentQuery(collection_id, "?")))[0]
+        assert not done.withheld
+
+
 async def test_tool_limit_withdraws_tools_and_forces_an_answer(
     uow: UnitOfWorkFactory, collection_id: UUID
 ) -> None:
     def keep_searching(messages: Sequence[ChatMessage]) -> str | list[ToolCall]:
         if messages[-1].content == prompts.FINAL_ANSWER_NUDGE:
-            return "Best effort answer."
+            return "Best effort answer [1]."
         return [_call("search_knowledge_base", f"c{len(messages)}", query=f"q{len(messages)}")]
 
     chat = FakeChatModel(keep_searching)
     done = (await _agent(uow, chat).execute(AgentQuery(collection_id, "?", max_tool_calls=2)))[0]
 
     assert done.tool_calls == 2
-    assert done.answer == "Best effort answer."
+    assert done.answer == "Best effort answer [1]."
     assert chat.tools_offered[-1] == []  # the final turn had no tools
     assert len(chat.tools_offered[0]) == 3
 
