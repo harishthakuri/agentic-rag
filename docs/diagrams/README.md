@@ -4,6 +4,7 @@
 |---|---|
 | [document-upload-flow.pdf](document-upload-flow.pdf) | How an uploaded document becomes searchable: upload, background processing, where AI is used and why |
 | [question-answer-flow.pdf](question-answer-flow.pdf) | How a question gets a cited answer: the API server works with the AI models directly, while you wait |
+| [reranker-flow.pdf](reranker-flow.pdf) | Where and when the reranker runs: Ask (always), Agent (off by default), upload (never, and why), evaluation (with and without); the two reviewers, settings and code locations |
 | [rag-explained.pdf](rag-explained.pdf) | What RAG is; chunking, embeddings ("meaning fingerprints"), vectors and vector databases; how many AI models simple RAG and our Agentic RAG need; Ask vs Agent in detail |
 
 Each PDF is printed from the self-contained HTML file next to it. To change a diagram, edit the HTML (open it in a browser to preview), then print it again with Chrome:
